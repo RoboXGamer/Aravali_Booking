@@ -1,74 +1,75 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Card } from '../components/common/Card';
-import { Button } from '../components/common/Button';
-import { Spinner } from '../components/common/Spinner';
-import { api } from '../services/api';
-import { CheckCircle, Download, Compass } from 'lucide-react';
+import { CheckCircle2, Download, Printer, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
 
-export const Confirmation: React.FC = () => {
-  const { booking_id } = useParams();
-  const navigate = useNavigate();
-  const [booking, setBooking] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+import { Button } from "../components/common/Button";
+import { Card } from "../components/common/Card";
+import { Spinner } from "../components/common/Spinner";
+import { api } from "../services/api";
+import type { Booking } from "../types";
+
+interface ConfirmationState {
+  booking?: Booking;
+  email?: string;
+}
+
+export function Confirmation() {
+  const { booking_code } = useParams();
+  const location = useLocation();
+  const routeState = (location.state || {}) as ConfirmationState;
+  const storedEmail = booking_code ? sessionStorage.getItem(`aravalli.booking.email.${booking_code}`) : null;
+  const email = routeState.email || storedEmail || "";
+  const [booking, setBooking] = useState<Booking | null>(routeState.booking || null);
+  const [loading, setLoading] = useState(!routeState.booking && Boolean(email));
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const fetchBookingDetails = async () => {
-      try {
-        const bookingsList = await api.get('/api/bookings');
-        const match = bookingsList.find((b: any) => b.id === booking_id);
-        setBooking(match);
-      } catch (err) {
-        console.error("Failed to retrieve booking confirmation details: ", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchBookingDetails();
-  }, [booking_id]);
+    if (booking || !booking_code || !email) return;
+    api.get<Booking>(`/api/bookings/${encodeURIComponent(booking_code)}?email=${encodeURIComponent(email)}`)
+      .then(setBooking)
+      .catch((reason: Error) => setError(reason.message))
+      .finally(() => setLoading(false));
+  }, [booking, booking_code, email]);
 
-  if (loading) return <div className="h-[70vh] flex items-center justify-center"><Spinner size="lg" /></div>;
-  if (!booking) return <div className="text-center py-20 text-slate-400">Booking configuration mismatch.</div>;
+  if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><Spinner size="lg" /></div>;
+  if (!booking || !booking_code || !email) {
+    return (
+      <div className="mx-auto max-w-lg px-5 py-24 text-center">
+        <Search className="mx-auto h-8 w-8 text-amber-400" />
+        <h1 className="mt-4 text-2xl font-black text-white">Retrieve your booking</h1>
+        <p className="mt-2 text-slate-400">{error || "Use your booking code and email address to reopen this ticket."}</p>
+        <Link to="/find-booking"><Button className="mt-6">Find booking</Button></Link>
+      </div>
+    );
+  }
 
-  const handleDownload = () => {
-    const url = api.getDownloadUrl(booking.id);
-    window.open(url, '_blank');
-  };
+  const seats = booking.booking_seats.map((seat) => seat.seat_number).join(", ");
+  const movieTitle = booking.shows?.movies?.title || "Aravalli Screening";
+  const download = () => window.open(api.getDownloadUrl(booking.booking_code, email), "_blank", "noopener,noreferrer");
 
   return (
-    <div className="max-w-xl mx-auto px-6 py-12 text-center">
-      <Card className="bg-cinema-card p-8 space-y-6">
-        <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-brand flex items-center justify-center mx-auto">
-          <CheckCircle className="w-8 h-8" />
-        </div>
-        
-        <div className="space-y-2">
-          <h1 className="text-2xl font-black font-bold text-gold">Admission Pass Locked Successfully</h1>
-          <p className="text-sm text-slate-400 max-w-sm mx-auto leading-relaxed">
-            Your dynamic verification pass is ready. Please download your original PDF copy for security check desks.
-          </p>
-        </div>
+    <div className="mx-auto max-w-2xl px-5 py-14 text-center">
+      <CheckCircle2 className="mx-auto h-16 w-16 text-emerald-400" />
+      <h1 className="mt-5 text-3xl font-black text-white">Booking confirmed</h1>
+      <p className="mt-2 text-slate-400">Your seats are confirmed and your ticket is ready.</p>
 
-        <div className="border border-dashed border-slate-800 bg-slate-900 rounded-2xl p-6 text-left space-y-4">
-          <div className="flex justify-between items-center text-xs text-slate-400">
-            <span>Pass Clearance Reference</span>
-            <span className="font-mono text-slate-200 text-[11px] font-bold">{booking.id}</span>
-          </div>
-          <div className="flex justify-between items-center text-xs text-slate-400">
-            <span>Total Value Cleared</span>
-            <span className="text-brand font-extrabold text-sm text-gold">INR {booking.total_amount}</span>
-          </div>
+      <Card className="mt-8 text-left">
+        <div className="flex flex-col justify-between gap-5 border-b border-slate-800 pb-5 sm:flex-row sm:items-center">
+          <div><p className="text-xs text-slate-500">Movie</p><p className="mt-1 text-xl font-black text-white">{movieTitle}</p></div>
+          <div className="sm:text-right"><p className="text-xs text-slate-500">Booking code</p><p className="mt-1 font-mono font-black text-amber-400">{booking.booking_code}</p></div>
         </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Button onClick={handleDownload} variant="primary" className="gap-2 justify-center py-3 text-xs uppercase tracking-wider font-bold">
-            <Download className="w-4 h-4" /> Download Ticket
-          </Button>
-          <Button onClick={() => navigate('/events')} variant="secondary" className="gap-2 justify-center py-3 text-xs uppercase tracking-wider">
-            <Compass className="w-4 h-4" /> Discover Movies
-          </Button>
+        <div className="mt-5 grid gap-5 text-sm sm:grid-cols-2">
+          <div><p className="text-slate-500">Date and time</p><p className="mt-1 font-semibold text-white">{booking.shows.date} · {booking.shows.time.slice(0, 5)}</p></div>
+          <div><p className="text-slate-500">Seats</p><p className="mt-1 font-semibold text-white">{seats}</p></div>
+          <div><p className="text-slate-500">Email</p><p className="mt-1 font-semibold text-white">{booking.customer_email}</p></div>
+          <div><p className="text-slate-500">Amount paid</p><p className="mt-1 font-semibold text-white">INR {Number(booking.total_amount).toFixed(2)}</p></div>
         </div>
       </Card>
+
+      <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+        <Button onClick={download} className="gap-2"><Download className="h-4 w-4" /> Download ticket</Button>
+        <Button onClick={() => window.print()} variant="secondary" className="gap-2"><Printer className="h-4 w-4" /> Print page</Button>
+      </div>
     </div>
   );
-};
+}

@@ -1,78 +1,38 @@
-import React from "react";
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  Navigate,
-} from "react-router-dom";
-import { AuthProvider } from "./context/AuthContext";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
-import { Navbar } from "./components/common/Navbar";
 import { Footer } from "./components/common/Footer";
-import { ProtectedRoute } from "./components/ProtectedRoute";
-
-import { LandingPage } from "./pages/LandingPage";
-import { Login } from "./pages/Login";
-import { Signup } from "./pages/Signup";
-import { EventsPage } from "./pages/EventsPage";
-import { EventDetails } from "./pages/EventDetails";
-import { TicketBooking } from "./pages/TicketBooking";
+import { Navbar } from "./components/common/Navbar";
+import { BookingLookup } from "./pages/BookingLookup";
 import { Checkout } from "./pages/Checkout";
 import { Confirmation } from "./pages/Confirmation";
-import { MyBookings } from "./pages/MyBookings";
-import { AdminDashboard } from "./pages/AdminDashboard";
-import { CheckInScanner } from "./pages/CheckInScanner";
+import { EventDetails } from "./pages/EventDetails";
+import { EventsPage } from "./pages/EventsPage";
+import { LandingPage } from "./pages/LandingPage";
+import { TicketBooking } from "./pages/TicketBooking";
 
-const App: React.FC = () => {
+export default function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <div className="flex flex-col min-h-screen bg-background">
-          <Navbar />
-          <main className="flex-grow">
-            <Routes>
-              {/* Public Elements */}
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/signup" element={<Signup />} />
-              <Route path="/events" element={<EventsPage />} />
-              <Route path="/events/:event_id" element={<EventDetails />} />
+    <BrowserRouter>
+      <div className="flex min-h-screen flex-col bg-background">
+        <Navbar />
+        <main className="flex-grow">
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/shows" element={<EventsPage />} />
+            <Route path="/shows/:event_id" element={<EventDetails />} />
+            <Route path="/book/:event_id" element={<TicketBooking />} />
+            <Route path="/checkout" element={<Checkout />} />
+            <Route path="/confirmation/:booking_code" element={<Confirmation />} />
+            <Route path="/find-booking" element={<BookingLookup />} />
 
-              {/* Booking elements */}
-              <Route path="/book/:event_id" element={<TicketBooking />} />
-              <Route path="/checkout" element={<Checkout />} />
-              <Route
-                path="/confirmation/:booking_id"
-                element={<Confirmation />}
-              />
-              <Route path="/bookings" element={<MyBookings />} />
-
-              {/* Operator Level */}
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute requireAdmin>
-                    <AdminDashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin/check-in"
-                element={
-                  <ProtectedRoute requireAdmin>
-                    <CheckInScanner />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </main>
-          <Footer />
-        </div>
-      </Router>
-    </AuthProvider>
+            {/* Temporary aliases for old shared links. */}
+            <Route path="/events" element={<Navigate to="/shows" replace />} />
+            <Route path="/events/:event_id" element={<EventDetails />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+        <Footer />
+      </div>
+    </BrowserRouter>
   );
-};
-
-export default App;
+}

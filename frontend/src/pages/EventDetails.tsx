@@ -1,90 +1,77 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Card } from '../components/common/Card';
-import { Button } from '../components/common/Button';
-import { Spinner } from '../components/common/Spinner';
-import { api } from '../services/api';
-import { Calendar, MapPin, Clock, ArrowLeft } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Clock, PlayCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 
-export const EventDetails: React.FC = () => {
+import { Button } from "../components/common/Button";
+import { Card } from "../components/common/Card";
+import { Spinner } from "../components/common/Spinner";
+import { api } from "../services/api";
+import type { Show } from "../types";
+
+export function EventDetails() {
   const { event_id } = useParams();
-  const navigate = useNavigate();
-  const [event, setEvent] = useState<any>(null);
+  const [show, setShow] = useState<Show | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    if (event_id) {
-      api.get(`/api/events/${event_id}`)
-        .then(res => {
-          setEvent(res);
-          setLoading(false);
-        })
-        .catch(err => {
-          console.error(err);
-          setLoading(false);
-        });
-    }
+    if (!event_id) return;
+    api.get<Show>(`/api/events/${event_id}`)
+      .then(setShow)
+      .catch((reason: Error) => setError(reason.message))
+      .finally(() => setLoading(false));
   }, [event_id]);
 
-  if (loading) return <div className="h-[70vh] flex items-center justify-center"><Spinner size="lg" /></div>;
-  if (!event) return <div className="text-center py-20 text-slate-400">Show details not located.</div>;
+  if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><Spinner size="lg" /></div>;
+  if (!show) return <div className="mx-auto max-w-3xl px-5 py-20 text-center text-rose-300">{error || "Show not found."}</div>;
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-12">
-      <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-400 hover:text-white transition text-sm mb-8">
-        <ArrowLeft className="w-4 h-4" /> Back to listings
-      </button>
+    <div className="mx-auto max-w-6xl px-5 py-12 md:px-8">
+      <Link to="/shows" className="mb-8 inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white">
+        <ArrowLeft className="h-4 w-4" /> All showtimes
+      </Link>
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-12">
-        <div className="md:col-span-5 h-[400px] rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
-          <img 
-            src={event.poster_url || "https://images.unsplash.com/photo-1514306191717-452ec28c7814?auto=format&fit=crop&q=80&w=600"} 
-            alt={event.title}
-            className="w-full h-full object-cover"
-          />
-        </div>
-
-        <div className="md:col-span-7 flex flex-col justify-between space-y-8">
-          <div className="space-y-4">
-            <h1 className="text-3xl font-extrabold text-slate-100">{event.title}</h1>
-            <p className="text-slate-400 text-sm leading-relaxed whitespace-pre-wrap">{event.description}</p>
+      <div className="grid gap-10 md:grid-cols-[340px_1fr]">
+        <img
+          src={show.poster_url || "https://placehold.co/600x900/20252C/D4AF37?text=Aravalli"}
+          alt={show.title}
+          className="h-[500px] w-full rounded-2xl object-cover shadow-2xl"
+        />
+        <div className="flex flex-col justify-center">
+          <div className="flex flex-wrap gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
+            {[show.genre, show.language, show.certificate, `${show.duration_minutes} min`].map((value) => (
+              <span key={value} className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5">{value}</span>
+            ))}
           </div>
+          <h1 className="mt-6 text-4xl font-black text-white md:text-5xl">{show.title}</h1>
+          <p className="mt-5 max-w-2xl leading-7 text-slate-400">{show.description}</p>
 
-          <Card className="grid grid-cols-2 gap-6 bg-cinema-card border-slate-900/60">
-            <div className="flex items-start gap-3">
-              <Calendar className="w-5 h-5 text-brand shrink-0 mt-0.5" />
-              <div>
-                <span className="text-xs uppercase font-semibold text-slate-500 font-bold">Scheduled Date</span>
-                <p className="text-sm font-semibold text-slate-300 mt-0.5">{event.date}</p>
-              </div>
+          <Card className="mt-7 grid gap-5 sm:grid-cols-2">
+            <div className="flex items-center gap-3">
+              <CalendarDays className="h-5 w-5 text-amber-400" />
+              <div><p className="text-xs text-slate-500">Date</p><p className="font-bold text-white">{show.date}</p></div>
             </div>
-            <div className="flex items-start gap-3">
-              <Clock className="w-5 h-5 text-brand shrink-0 mt-0.5" />
-              <div>
-                <span className="text-xs uppercase font-semibold text-slate-500 font-bold">Session Bell</span>
-                <p className="text-sm font-semibold text-slate-300 mt-0.5">{event.time}</p>
-              </div>
-            </div>
-            <div className="col-span-2 flex items-start gap-3 border-t border-slate-900 pt-4">
-              <MapPin className="w-5 h-5 text-brand shrink-0 mt-0.5" />
-              <div>
-                <span className="text-xs uppercase font-semibold text-slate-500 font-bold">Venue Location</span>
-                <p className="text-sm font-semibold text-slate-300 mt-0.5">{event.venue}</p>
-              </div>
+            <div className="flex items-center gap-3">
+              <Clock className="h-5 w-5 text-amber-400" />
+              <div><p className="text-xs text-slate-500">Showtime</p><p className="font-bold text-white">{show.time.slice(0, 5)}</p></div>
             </div>
           </Card>
 
-          <div className="flex items-center justify-between border-t border-slate-900/60 pt-6">
-            <div>
-              <span className="text-xs text-slate-500 font-medium font-bold">Aravalli Seating Layouts</span>
-              <p className="text-xl font-extrabold text-slate-200">Interactive Map</p>
-            </div>
-            <Button onClick={() => navigate(`/book/${event.id}`)} variant="primary" size="lg">
-              Book Dynamic Seat Ticket
-            </Button>
+          <div className="mt-7 flex flex-wrap gap-3">
+            <Link to={`/book/${show.id}`}><Button size="lg">Choose seats</Button></Link>
+            {show.trailer_url && (
+              <a href={show.trailer_url} target="_blank" rel="noreferrer">
+                <Button size="lg" variant="secondary" className="gap-2"><PlayCircle className="h-4 w-4" /> Trailer</Button>
+              </a>
+            )}
+          </div>
+
+          <div className="mt-8 grid gap-2 text-sm text-slate-400 sm:grid-cols-2">
+            <p><span className="text-slate-500">Director:</span> {show.director || "—"}</p>
+            <p><span className="text-slate-500">Cast:</span> {show.cast_members || "—"}</p>
           </div>
         </div>
       </div>
     </div>
   );
-};
+}

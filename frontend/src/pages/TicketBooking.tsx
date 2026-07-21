@@ -1,186 +1,152 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Card } from '../components/common/Card';
-import { Button } from '../components/common/Button';
-import { Input } from '../components/common/Input';
-import { Spinner } from '../components/common/Spinner';
-import { SeatMap } from '../components/common/SeatMap';
-import { api } from '../services/api';
-import { ShieldCheck, Info } from 'lucide-react';
+import { Info, RefreshCw, ShieldCheck } from "lucide-react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
-export const TicketBooking: React.FC = () => {
+import { Button } from "../components/common/Button";
+import { Card } from "../components/common/Card";
+import { Input } from "../components/common/Input";
+import { SeatMap } from "../components/common/SeatMap";
+import { Spinner } from "../components/common/Spinner";
+import { api } from "../services/api";
+import type { AvailabilityResponse, BookingSettings, CheckoutResponse, Seat, Show } from "../types";
+
+export function TicketBooking() {
   const { event_id } = useParams();
   const navigate = useNavigate();
-  const [show, setShow] = useState<any>(null);
-  const [seats, setSeats] = useState<any[]>([]);
-  const [bookedSeatIds, setBookedSeatIds] = useState<string[]>([]);
-  const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
+  const [show, setShow] = useState<Show | null>(null);
+  const [settings, setSettings] = useState<BookingSettings | null>(null);
+  const [seats, setSeats] = useState<Seat[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [error, setError] = useState('');
-
-  const loadData = async () => {
+  const refreshAvailability = async (quiet = false) => {
+    if (!event_id) return;
+    if (!quiet) setRefreshing(true);
     try {
-      const showData = await api.get(`/api/events/${event_id}`);
-      setShow(showData);
-
-      const [allSeats, availability] = await Promise.all([
-        api.get('/api/admin/seats/layout'),
-        api.get(`/api/bookings/availability/${event_id}`)
-      ]);
-
-      setSeats(allSeats);
-      setBookedSeatIds(availability.booked_seat_layout_ids || []);
-      setLoading(false);
-    } catch (err: any) {
-      console.error(err);
-      setError('Failed to fetch show configurations.');
-      setLoading(false);
+      const availability = await api.get<AvailabilityResponse>(`/api/bookings/availability/${event_id}`);
+      setSeats(availability.seats);
+      const availableIds = new Set(
+        availability.seats.filter((seat) => seat.availability === "available").map((seat) => seat.id),
+      );
+      setSelectedIds((current) => current.filter((id) => availableIds.has(id)));
+    } catch (reason) {
+      if (!quiet) setError((reason as Error).message);
+    } finally {
+      if (!quiet) setRefreshing(false);
     }
   };
 
   useEffect(() => {
-    if (event_id) {
-      loadData();
-    }
+    if (!event_id) return;
+    Promise.all([
+      api.get<Show>(`/api/events/${event_id}`),
+      api.get<BookingSettings>("/api/bookings/settings"),
+      api.get<AvailabilityResponse>(`/api/bookings/availability/${event_id}`),
+    ])
+      .then(([showData, settingData, availability]) => {
+        setShow(showData);
+        setSettings(settingData);
+        setSeats(availability.seats);
+      })
+      .catch((reason: Error) => setError(reason.message))
+      .finally(() => setLoading(false));
+
+    const refreshTimer = window.setInterval(() => void refreshAvailability(true), 5000);
+    return () => window.clearInterval(refreshTimer);
   }, [event_id]);
 
-  if (loading) return <div className="h-[70vh] flex items-center justify-center"><Spinner size="lg" /></div>;
-  if (error || !show) return <div className="text-center py-20 text-red-500">{error || 'Session details missing.'}</div>;
+  const selectedSeats = useMemo(() => seats.filter((seat) => selectedIds.includes(seat.id)), [seats, selectedIds]);
+  const subtotal = selectedSeats.reduce((sum, seat) => sum + Number(seat.price), 0);
+  const fee = selectedSeats.length * Number(settings?.convenience_fee_per_seat || 0);
+  const gst = (subtotal + fee) * (Number(settings?.gst_percentage || 0) / 100);
+  const total = subtotal + fee + gst;
 
-  const selectedSeats = seats.filter(s => selectedSeatIds.includes(s.id));
-  const subtotal = selectedSeats.reduce((sum, s) => sum + parseFloat(s.price), 0);
-  const convenienceFee = 30.00 * selectedSeatIds.length;
-  const gst = (subtotal + convenienceFee) * 0.18;
-  const total = subtotal + convenienceFee + gst;
-
-  const handleSeatSelect = (seatId: string) => {
-    setSelectedSeatIds(prev =>
-      prev.includes(seatId) ? prev.filter(id => id !== seatId) : [...prev, seatId]
+  const toggleSeat = (seatId: string) => {
+    setError("");
+    setSelectedIds((current) =>
+      current.includes(seatId) ? current.filter((id) => id !== seatId) : [...current, seatId],
     );
   };
 
-  const handleCheckout = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (selectedSeatIds.length === 0) {
-      setError('Please select at least one seat from the auditorium map.');
-      return;
-    }
-    if (!name.trim() || !phone.trim()) {
-      setError('Name and phone details are required.');
-      return;
-    }
-
-    setError('');
+  const beginCheckout = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!show || !settings || selectedIds.length === 0) return;
     setSubmitting(true);
-
+    setError("");
     try {
-      const checkoutData = await api.post('/api/bookings/', {
+      const checkout = await api.post<CheckoutResponse>("/api/bookings/checkout-sessions", {
         show_id: show.id,
-        customer_name: name,
-        customer_phone: phone,
-        customer_email: email || null,
-        seat_layout_ids: selectedSeatIds
+        customer_name: name.trim(),
+        customer_email: email.trim().toLowerCase(),
+        customer_phone: phone.trim() || null,
+        seat_layout_ids: selectedIds,
       });
-
-      navigate('/checkout', { state: { ...checkoutData } });
-    } catch (err: any) {
-      setError(err.message || "Failed to secure ticket seat booking lock.");
+      const checkoutState = { ...checkout, show };
+      sessionStorage.setItem("aravalli.checkout", JSON.stringify(checkoutState));
+      navigate("/checkout", { state: checkoutState });
+    } catch (reason) {
+      setError((reason as Error).message);
+      await refreshAvailability(true);
     } finally {
       setSubmitting(false);
     }
   };
 
+  if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><Spinner size="lg" /></div>;
+  if (!show || !settings) return <div className="mx-auto max-w-2xl px-5 py-20 text-center text-rose-300">{error || "Booking is unavailable."}</div>;
+
   return (
-    <div className="max-w-7xl mx-auto px-6 py-12">
-      <div className="flex flex-col md:flex-row justify-between items-start gap-12">
-        <div className="w-full md:w-3/5 space-y-8">
-          <div className="border-b border-slate-800 pb-4">
-            <h1 className="text-3xl font-extrabold text-slate-100 font-bold">Select Seating Placement</h1>
-            <p className="text-slate-400 mt-1">Select seat placements inside the auditorium. Max 6 seats per transaction.</p>
-          </div>
+    <div className="mx-auto max-w-7xl px-5 py-10 md:px-8">
+      <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-400">{show.title}</p>
+          <h1 className="mt-2 text-3xl font-black text-white">Choose your seats</h1>
+          <p className="mt-2 text-sm text-slate-400">{show.date} at {show.time.slice(0, 5)} · Maximum {settings.max_seats_per_booking} seats</p>
+        </div>
+        <Button variant="secondary" size="sm" onClick={() => void refreshAvailability()} disabled={refreshing} className="gap-2 self-start">
+          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} /> Refresh seats
+        </Button>
+      </div>
 
-          <Card className="bg-cinema-card p-8">
-            <SeatMap
-              seats={seats}
-              bookedSeatIds={bookedSeatIds}
-              selectedSeatIds={selectedSeatIds}
-              onSeatSelect={handleSeatSelect}
-              maxSelectable={6}
-            />
+      <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
+        <Card><SeatMap seats={seats} selectedSeatIds={selectedIds} onSeatSelect={toggleSeat} maxSelectable={settings.max_seats_per_booking} /></Card>
+
+        <form onSubmit={beginCheckout} className="space-y-5 lg:sticky lg:top-24 lg:self-start">
+          <Card className="space-y-4">
+            <h2 className="font-extrabold text-white">Your details</h2>
+            <Input label="Full name" required value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" />
+            <Input label="Email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
+            <Input label="Phone (optional)" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" />
+            <p className="flex gap-2 rounded-lg bg-slate-900 p-3 text-xs leading-5 text-slate-400">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" /> No account required. Your email and booking code retrieve the ticket.
+            </p>
           </Card>
-        </div>
 
-        <div className="w-full md:w-2/5 space-y-6">
-          <form onSubmit={handleCheckout} className="space-y-6">
-            <Card className="bg-cinema-card p-6 space-y-4">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-amber-500 mb-2 font-bold font-bold">1. Admission Pass Holder</h3>
-              
-              <Input label="Full Name" required value={name} onChange={e => setName(e.target.value)} />
-              <Input label="Phone Number" required value={phone} onChange={e => setPhone(e.target.value)} />
-              <Input label="Email (Optional)" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+          <Card>
+            <h2 className="font-extrabold text-white">Order summary</h2>
+            <p className="mt-3 min-h-5 text-sm font-semibold text-amber-400">
+              {selectedSeats.length ? selectedSeats.map((seat) => seat.seat_number).join(", ") : "No seats selected"}
+            </p>
+            <div className="mt-5 space-y-2 border-t border-slate-800 pt-4 text-sm text-slate-400">
+              <p className="flex justify-between"><span>Seats</span><span>INR {subtotal.toFixed(2)}</span></p>
+              <p className="flex justify-between"><span>Convenience fee</span><span>INR {fee.toFixed(2)}</span></p>
+              <p className="flex justify-between"><span>GST</span><span>INR {gst.toFixed(2)}</span></p>
+              <p className="flex justify-between border-t border-slate-800 pt-3 text-base font-black text-white"><span>Total</span><span className="text-amber-400">INR {total.toFixed(2)}</span></p>
+            </div>
 
-              <div className="flex gap-2 text-[11px] text-slate-400 p-3 bg-slate-900 rounded-lg">
-                <Info className="w-4 h-4 text-amber-500 shrink-0" />
-                <span>No login required. We will use these details to dispatch your QR code ticket.</span>
-              </div>
-            </Card>
-
-            <Card className="bg-cinema-card p-6">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-amber-500 mb-6 font-bold font-bold">2. Order Overview</h3>
-              
-              <div className="space-y-4 text-sm text-slate-400">
-                <div className="flex justify-between">
-                  <span>Showtime Selected</span>
-                  <span className="text-slate-100 font-semibold">{show.date} at {show.time}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Selected Seats</span>
-                  <span className="text-amber-500 font-bold">
-                    {selectedSeats.length > 0 ? selectedSeats.map(s => s.seat_number).join(', ') : 'None'}
-                  </span>
-                </div>
-
-                <div className="h-px bg-slate-800 my-4" />
-
-                <div className="flex justify-between text-xs">
-                  <span>Seats Subtotal</span>
-                  <span>INR {subtotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span>Convenience Booking Fee</span>
-                  <span>INR {convenienceFee.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span>Calculated GST (18%)</span>
-                  <span>INR {gst.toFixed(2)}</span>
-                </div>
-
-                <div className="h-px bg-slate-800 my-4" />
-
-                <div className="flex justify-between items-end text-slate-100 font-bold">
-                  <span className="text-sm font-semibold">Grand Total</span>
-                  <span className="text-2xl text-amber-500">INR {total.toFixed(2)}</span>
-                </div>
-              </div>
-
-              {error && <p className="text-xs text-red-500 bg-red-950/20 border border-red-900/50 p-3 rounded-lg mt-4">{error}</p>}
-
-              <Button
-                type="submit"
-                className="w-full mt-6 bg-gold-gradient text-slate-950 font-bold gap-2"
-                disabled={submitting || selectedSeatIds.length === 0 || !name || !phone}
-              >
-                <ShieldCheck className="w-5 h-5" /> Lock Seats & Checkout
-              </Button>
-            </Card>
-          </form>
-        </div>
+            {error && <p className="mt-4 rounded-lg border border-rose-900 bg-rose-950/20 p-3 text-xs text-rose-300">{error}</p>}
+            <Button type="submit" className="mt-5 w-full gap-2" disabled={submitting || !name.trim() || !email.trim() || selectedIds.length === 0}>
+              <ShieldCheck className="h-4 w-4" /> {submitting ? "Holding seats…" : "Hold seats & continue"}
+            </Button>
+          </Card>
+        </form>
       </div>
     </div>
   );
-};
+}

@@ -9,6 +9,26 @@
     color: #F3F4F6;
     font-family: 'Inter', sans-serif;
     -webkit-font-smoothing: antialiased;
+    min-width: 320px;
+  }
+
+  button,
+  a,
+  input {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@media print {
+  nav,
+  footer,
+  button {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+    color: black;
   }
 }
 

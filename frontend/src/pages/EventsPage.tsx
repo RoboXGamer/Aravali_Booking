@@ -1,87 +1,81 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Card } from '../components/common/Card';
-import { Button } from '../components/common/Button';
-import { Spinner } from '../components/common/Spinner';
-import { api } from '../services/api';
-import { Calendar, Search, MapPin } from 'lucide-react';
+import { CalendarDays, Clock, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
-export const EventsPage: React.FC = () => {
-  const navigate = useNavigate();
-  const [events, setEvents] = useState<any[]>([]);
-  const [search, setSearch] = useState('');
+import { Card } from "../components/common/Card";
+import { Spinner } from "../components/common/Spinner";
+import { api } from "../services/api";
+import type { Show } from "../types";
+
+export function EventsPage() {
+  const [shows, setShows] = useState<Show[]>([]);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    api.get('/api/events')
-      .then(res => {
-        setEvents(res);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error(err);
-        setLoading(false);
-      });
+    api.get<Show[]>("/api/events")
+      .then(setShows)
+      .catch((reason: Error) => setError(reason.message))
+      .finally(() => setLoading(false));
   }, []);
 
-  const filtered = events.filter(e => e.title.toLowerCase().includes(search.toLowerCase()));
+  const filtered = useMemo(
+    () => shows.filter((show) => show.title.toLowerCase().includes(search.trim().toLowerCase())),
+    [search, shows],
+  );
 
-  if (loading) return <div className="h-[70vh] flex items-center justify-center"><Spinner size="lg" /></div>;
+  if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><Spinner size="lg" /></div>;
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-12 space-y-10">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-slate-900 pb-8">
+    <div className="mx-auto max-w-7xl px-5 py-12 md:px-8">
+      <div className="flex flex-col justify-between gap-6 border-b border-slate-800 pb-8 md:flex-row md:items-end">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-100 font-bold">Weekly Scheduled Cinema Showtimes</h1>
-          <p className="text-slate-400 mt-1">Select from our scheduling and book dynamic placement seats easily.</p>
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-amber-400">Upcoming</p>
+          <h1 className="mt-2 text-3xl font-black text-white">Choose a showtime</h1>
+          <p className="mt-2 text-slate-400">Select a screening to view details and seats.</p>
         </div>
-        <div className="relative w-full md:w-80">
-          <Search className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-500" />
-          <input 
-            type="text"
-            placeholder="Search movies..."
+        <label className="relative block w-full md:w-80">
+          <Search className="absolute left-4 top-3.5 h-4 w-4 text-slate-500" />
+          <input
             value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg py-3 pl-11 pr-4 text-sm text-slate-100 focus:outline-none focus:border-brand"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search movie"
+            className="w-full rounded-xl border border-slate-800 bg-slate-900 px-11 py-3 text-sm text-white outline-none focus:border-amber-500"
           />
-        </div>
+        </label>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {filtered.map(event => (
-          <Card key={event.id} className="p-0 flex flex-col group h-full bg-cinema-card">
-            <div className="h-48 overflow-hidden relative">
-              <img 
-                src={event.poster_url || "https://images.unsplash.com/photo-1514306191717-452ec28c7814?auto=format&fit=crop&q=80&w=600"} 
-                alt={event.title}
-                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-102"
-              />
-            </div>
-            <div className="p-6 flex-1 flex flex-col justify-between space-y-5">
-              <div className="space-y-2">
-                <h3 className="text-lg font-bold group-hover:text-brand transition">{event.title}</h3>
-                <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <Calendar className="w-3.5 h-3.5 text-brand" />
-                  <span>{event.date} at {event.time}</span>
+      {error ? (
+        <p className="mt-10 rounded-xl border border-rose-900 bg-rose-950/20 p-4 text-rose-300">{error}</p>
+      ) : filtered.length === 0 ? (
+        <Card className="mt-10 py-14 text-center text-slate-400">No matching showtimes found.</Card>
+      ) : (
+        <div className="mt-10 grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((show) => (
+            <Link key={show.id} to={`/shows/${show.id}`}>
+              <Card className="group h-full p-0">
+                <img
+                  src={show.poster_url || "https://placehold.co/600x900/20252C/D4AF37?text=Aravalli"}
+                  alt={show.title}
+                  className="h-72 w-full object-cover"
+                />
+                <div className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <h2 className="text-lg font-extrabold text-white group-hover:text-amber-400">{show.title}</h2>
+                    <span className="rounded bg-slate-800 px-2 py-1 text-[10px] font-bold text-slate-300">{show.certificate}</span>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-500">{show.genre} · {show.language} · {show.duration_minutes} min</p>
+                  <div className="mt-5 flex items-center justify-between border-t border-slate-800 pt-4 text-sm">
+                    <span className="flex items-center gap-2 text-slate-300"><CalendarDays className="h-4 w-4 text-amber-400" />{show.date}</span>
+                    <span className="flex items-center gap-2 font-bold text-white"><Clock className="h-4 w-4 text-amber-400" />{show.time.slice(0, 5)}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <MapPin className="w-3.5 h-3.5 text-brand" />
-                  <span>{event.venue}</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between pt-4 border-t border-slate-900/60">
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold font-bold">Dynamic Tiers Pricing</span>
-                  <span className="text-sm font-bold text-slate-200">Seated Pass</span>
-                </div>
-                <Button onClick={() => navigate(`/events/${event.id}`)} variant="primary" size="sm">
-                  View Timing Details
-                </Button>
-              </div>
-            </div>
-          </Card>
-        ))}
-      </div>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
-};
+}

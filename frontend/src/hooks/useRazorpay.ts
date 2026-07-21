@@ -1,20 +1,35 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from "react";
 
-export const useRazorpay = () => {
-  const [isLoaded, setIsLoaded] = useState(false);
+const SCRIPT_ID = "razorpay-checkout-script";
+
+export function useRazorpay() {
+  const [loaded, setLoaded] = useState(() => Boolean(window.Razorpay));
 
   useEffect(() => {
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.async = true;
-    script.onload = () => setIsLoaded(true);
-    script.onerror = () => setIsLoaded(false);
-    document.body.appendChild(script);
+    if (window.Razorpay) {
+      setLoaded(true);
+      return;
+    }
+
+    let script = document.getElementById(SCRIPT_ID) as HTMLScriptElement | null;
+    if (!script) {
+      script = document.createElement("script");
+      script.id = SCRIPT_ID;
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+      document.body.appendChild(script);
+    }
+
+    const handleLoad = () => setLoaded(true);
+    const handleError = () => setLoaded(false);
+    script.addEventListener("load", handleLoad);
+    script.addEventListener("error", handleError);
 
     return () => {
-      document.body.removeChild(script);
+      script?.removeEventListener("load", handleLoad);
+      script?.removeEventListener("error", handleError);
     };
   }, []);
 
-  return isLoaded;
-};
+  return loaded;
+}

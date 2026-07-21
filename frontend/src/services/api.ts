@@ -1,44 +1,54 @@
-const BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+const BASE_URL = (import.meta.env.VITE_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "");
 
-async function getHeaders() {
-  const token = localStorage.getItem('supabase.auth.token') || '';
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`
-  };
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+async function request<T>(endpoint: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${BASE_URL}${endpoint}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...init?.headers,
+    },
+  });
+
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    const responseBody = await response.text();
+    try {
+      const body = JSON.parse(responseBody);
+      message = body.detail || body.message || message;
+    } catch {
+      if (responseBody) message = responseBody;
+    }
+    throw new ApiError(message, response.status);
+  }
+
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
 }
 
 export const api = {
-  async get(endpoint: string) {
-    const headers = await getHeaders();
-    const res = await fetch(`${BASE_URL}${endpoint}`, { headers });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+  get<T>(endpoint: string): Promise<T> {
+    return request<T>(endpoint);
   },
 
-  async post(endpoint: string, body: any) {
-    const headers = await getHeaders();
-    const res = await fetch(`${BASE_URL}${endpoint}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body)
-    });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+  post<T, TBody = unknown>(endpoint: string, body: TBody): Promise<T> {
+    return request<T>(endpoint, { method: "POST", body: JSON.stringify(body) });
   },
 
-  async delete(endpoint: string) {
-    const headers = await getHeaders();
-    const res = await fetch(`${BASE_URL}${endpoint}`, {
-      method: 'DELETE',
-      headers
-    });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+  delete<T>(endpoint: string): Promise<T> {
+    return request<T>(endpoint, { method: "DELETE" });
   },
 
-  getDownloadUrl(bookingId: string): string {
-    const token = localStorage.getItem('supabase.auth.token') || '';
-    return `${BASE_URL}/api/bookings/ticket/${bookingId}/download?token=${token}`;
-  }
+  getDownloadUrl(bookingCode: string, email: string): string {
+    return `${BASE_URL}/api/bookings/ticket/${encodeURIComponent(bookingCode)}/download?email=${encodeURIComponent(email)}`;
+  },
 };

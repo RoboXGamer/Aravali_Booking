@@ -1,139 +1,101 @@
-import React, { useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
-import { Compass, Calendar, ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, CalendarDays, Search, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+
 import { Button } from "../components/common/Button";
 import { Card } from "../components/common/Card";
+import { Spinner } from "../components/common/Spinner";
 import { api } from "../services/api";
+import type { Show } from "../types";
 
-export const LandingPage: React.FC = () => {
-  const navigate = useNavigate();
-  const [events, setEvents] = useState<any[]>([]);
+export function LandingPage() {
+  const [shows, setShows] = useState<Show[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get("/api/events").then(setEvents).catch(console.error);
+    api.get<Show[]>("/api/events").then(setShows).finally(() => setLoading(false));
   }, []);
 
   return (
-    <div className="min-h-screen">
-      <section className="relative h-[80vh] flex items-center justify-center px-6 overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-500/10 via-background to-background z-0" />
-
-        <div className="relative z-10 text-center max-w-4xl mx-auto space-y-6">
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-900 border border-slate-800 rounded-full text-xs text-brand"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            Delhi's Premier Cinema Experience
-          </motion.div>
-
-          <motion.h1
-            initial={{ opacity: 0, y: 25 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-4xl md:text-6xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-100 via-slate-200 to-slate-400"
-          >
-            Experience Cinema in Majesty
-          </motion.h1>
-
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="text-base md:text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed"
-          >
-            Curated movie showtimes, weekly public polls, and luxury seat maps
-            for the ultimate weekend screening.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="flex gap-4 justify-center pt-4"
-          >
-            <Button
-              onClick={() => navigate("/events")}
-              variant="primary"
-              size="lg"
-              className="gap-2"
-            >
-              Explore Showtimes <ArrowRight className="w-4 h-4" />
-            </Button>
-          </motion.div>
+    <div>
+      <section className="relative overflow-hidden px-5 py-24 text-center md:py-32">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(212,175,55,0.14),_transparent_52%)]" />
+        <div className="relative mx-auto max-w-4xl">
+          <p className="mb-5 text-xs font-bold uppercase tracking-[0.3em] text-amber-400">
+            Aravalli Auditorium
+          </p>
+          <h1 className="text-4xl font-black tracking-tight text-white md:text-7xl">
+            One great movie. Every week.
+          </h1>
+          <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-slate-400 md:text-lg">
+            Pick a show, choose your exact seats and pay securely. No account or sign-in required.
+          </p>
+          <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
+            <Link to="/shows">
+              <Button size="lg" className="w-full gap-2 sm:w-auto">
+                View showtimes <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Link to="/find-booking">
+              <Button size="lg" variant="secondary" className="w-full gap-2 sm:w-auto">
+                <Search className="h-4 w-4" /> Find booking
+              </Button>
+            </Link>
+          </div>
         </div>
       </section>
 
-      <section className="max-w-7xl mx-auto px-6 py-12">
-        <div className="flex justify-between items-end mb-10">
+      <section className="mx-auto max-w-7xl px-5 pb-20 md:px-8">
+        <div className="mb-7 flex items-end justify-between gap-4">
           <div>
-            <h2 className="text-2xl md:text-3xl font-bold text-slate-100">
-              Curated Playbills
-            </h2>
-            <p className="text-slate-400 text-sm mt-1">
-              Select from our weekly verified screenings list.
-            </p>
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-amber-400">Now booking</p>
+            <h2 className="mt-2 text-2xl font-extrabold text-white">Upcoming screenings</h2>
           </div>
-          <Button
-            onClick={() => navigate("/events")}
-            variant="ghost"
-            className="text-brand hover:text-brand-light gap-2 font-bold"
-          >
-            View All Showtimes <Compass className="w-4 h-4" />
-          </Button>
+          <Link to="/shows" className="text-sm font-semibold text-amber-400 hover:text-amber-300">
+            See all
+          </Link>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {events.slice(0, 3).map((event) => (
-            <motion.div
-              key={event.id}
-              whileHover={{ y: -5 }}
-              className="group cursor-pointer"
-              onClick={() => navigate(`/events/${event.id}`)}
-            >
-              <Card className="h-full flex flex-col p-0 bg-cinema-card">
-                <div className="h-48 overflow-hidden relative">
+        {loading ? (
+          <div className="flex justify-center py-16"><Spinner size="lg" /></div>
+        ) : shows.length === 0 ? (
+          <Card className="py-12 text-center text-slate-400">No upcoming shows have been scheduled.</Card>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-3">
+            {shows.slice(0, 3).map((show) => (
+              <Link key={show.id} to={`/shows/${show.id}`}>
+                <Card className="group h-full p-0">
                   <img
-                    src={
-                      event.poster_url ||
-                      "https://images.unsplash.com/photo-1514306191717-452ec28c7814?auto=format&fit=crop&q=80&w=600"
-                    }
-                    alt={event.title}
-                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    src={show.poster_url || "https://placehold.co/600x900/20252C/D4AF37?text=Aravalli"}
+                    alt={show.title}
+                    className="h-64 w-full object-cover transition duration-300 group-hover:scale-[1.02]"
                   />
-                  <div className="absolute top-4 left-4 bg-slate-950/80 backdrop-blur-md border border-slate-800/60 px-3 py-1 rounded-md text-xs text-brand font-semibold flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5" />
-                    {event.date}
-                  </div>
-                </div>
-
-                <div className="p-6 flex-1 flex flex-col justify-between space-y-4">
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-200 group-hover:text-brand transition duration-200">
-                      {event.title}
-                    </h3>
-                    <p className="text-sm text-slate-400 line-clamp-2 mt-2 leading-relaxed">
-                      {event.description}
+                  <div className="p-5">
+                    <h3 className="text-lg font-bold text-white">{show.title}</h3>
+                    <p className="mt-2 flex items-center gap-2 text-sm text-slate-400">
+                      <CalendarDays className="h-4 w-4 text-amber-400" /> {show.date} · {show.time.slice(0, 5)}
                     </p>
                   </div>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
 
-                  <div className="flex justify-between items-center pt-4 border-t border-slate-900">
-                    <span className="text-xs text-slate-500 font-semibold font-bold">
-                      Premium Seating Tiers
-                    </span>
-                    <span className="text-xs font-semibold text-brand flex items-center gap-1 font-bold">
-                      Details{" "}
-                      <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
-                    </span>
-                  </div>
-                </div>
-              </Card>
-            </motion.div>
+        <div className="mt-12 grid gap-4 md:grid-cols-3">
+          {[
+            { icon: CalendarDays, title: "Official schedule", text: "Wednesday through Sunday screenings." },
+            { icon: ShieldCheck, title: "Secure payment", text: "Razorpay payment verification on the backend." },
+            { icon: Search, title: "No account needed", text: "Retrieve tickets with booking code and email." },
+          ].map(({ icon: Icon, title, text }) => (
+            <div key={title} className="rounded-2xl border border-slate-800 bg-slate-900/35 p-5">
+              <Icon className="h-5 w-5 text-amber-400" />
+              <h3 className="mt-4 font-bold text-white">{title}</h3>
+              <p className="mt-1 text-sm text-slate-400">{text}</p>
+            </div>
           ))}
         </div>
       </section>
     </div>
   );
-};
+}
