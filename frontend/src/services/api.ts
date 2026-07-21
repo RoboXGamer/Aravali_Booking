@@ -11,10 +11,12 @@ export class ApiError extends Error {
 }
 
 async function request<T>(endpoint: string, init?: RequestInit): Promise<T> {
+  const adminToken = sessionStorage.getItem("aravalli.admin.token");
   const response = await fetch(`${BASE_URL}${endpoint}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
       ...init?.headers,
     },
   });
@@ -35,6 +37,18 @@ async function request<T>(endpoint: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export function saveAdminSession(accessToken: string): void {
+  sessionStorage.setItem("aravalli.admin.token", accessToken);
+}
+
+export function clearAdminSession(): void {
+  sessionStorage.removeItem("aravalli.admin.token");
+}
+
+export function hasAdminSession(): boolean {
+  return Boolean(sessionStorage.getItem("aravalli.admin.token"));
+}
+
 export const api = {
   get<T>(endpoint: string): Promise<T> {
     return request<T>(endpoint);
@@ -42,6 +56,14 @@ export const api = {
 
   post<T, TBody = unknown>(endpoint: string, body: TBody): Promise<T> {
     return request<T>(endpoint, { method: "POST", body: JSON.stringify(body) });
+  },
+
+  put<T, TBody = unknown>(endpoint: string, body: TBody): Promise<T> {
+    return request<T>(endpoint, { method: "PUT", body: JSON.stringify(body) });
+  },
+
+  patch<T, TBody = unknown>(endpoint: string, body: TBody): Promise<T> {
+    return request<T>(endpoint, { method: "PATCH", body: JSON.stringify(body) });
   },
 
   delete<T>(endpoint: string): Promise<T> {

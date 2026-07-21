@@ -3,6 +3,15 @@
 
 BEGIN;
 
+ALTER TABLE public.app_settings
+ADD COLUMN IF NOT EXISTS razorpay_fee_percentage NUMERIC(5, 2)
+NOT NULL DEFAULT 2.00
+CHECK (razorpay_fee_percentage BETWEEN 0 AND 100);
+
+UPDATE public.app_settings
+SET razorpay_fee_percentage = 2.00
+WHERE id = 1;
+
 DROP FUNCTION IF EXISTS public.finalize_paid_booking(UUID, TEXT, TEXT);
 DROP FUNCTION IF EXISTS public.create_checkout_session(UUID, TEXT, TEXT, TEXT, UUID[]);
 DROP FUNCTION IF EXISTS public.release_checkout_session(UUID);
@@ -174,12 +183,10 @@ BEGIN
         RAISE EXCEPTION 'One or more selected seats are currently held by another customer';
     END IF;
 
-    calculated_fee := selected_count * config.convenience_fee_per_seat;
-    calculated_gst := ROUND(
-        (selected_subtotal + calculated_fee) * config.gst_percentage / 100,
-        2
-    );
-    calculated_total := selected_subtotal + calculated_fee + calculated_gst;
+    -- Add the configured payment gateway fee to the customer total. GST stays disabled.
+    calculated_fee := ROUND(selected_subtotal * config.razorpay_fee_percentage / 100, 2);
+    calculated_gst := 0;
+    calculated_total := selected_subtotal + calculated_fee;
 
     INSERT INTO public.checkout_sessions (
         show_id,

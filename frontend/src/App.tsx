@@ -1,7 +1,9 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
-import { Footer } from "./components/common/Footer";
-import { Navbar } from "./components/common/Navbar";
+import { AdminGuard } from "./components/AdminGuard";
+import { AdminCheckIn } from "./pages/AdminCheckIn";
+import { AdminDashboard } from "./pages/AdminDashboard";
+import { AdminLogin } from "./pages/AdminLogin";
 import { BookingLookup } from "./pages/BookingLookup";
 import { Checkout } from "./pages/Checkout";
 import { Confirmation } from "./pages/Confirmation";
@@ -11,13 +13,11 @@ import { LandingPage } from "./pages/LandingPage";
 import { MoviePoll } from "./pages/MoviePoll";
 import { TicketBooking } from "./pages/TicketBooking";
 
-export default function App() {
+function AppLayout() {
   return (
-    <BrowserRouter>
-      <div className="flex min-h-screen flex-col bg-background">
-        <Navbar />
-        <main className="flex-grow">
-          <Routes>
+    <div className="flex min-h-screen flex-col bg-background">
+      <main className="flex-grow">
+        <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/shows" element={<EventsPage />} />
             <Route path="/shows/:event_id" element={<EventDetails />} />
@@ -26,15 +26,24 @@ export default function App() {
             <Route path="/confirmation/:booking_code" element={<Confirmation />} />
             <Route path="/find-booking" element={<BookingLookup />} />
             <Route path="/poll" element={<MoviePoll />} />
+            <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/admin" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
+            <Route path="/admin/check-in" element={<AdminGuard><AdminCheckIn /></AdminGuard>} />
 
             {/* Temporary aliases for old shared links. */}
             <Route path="/events" element={<Navigate to="/shows" replace />} />
             <Route path="/events/:event_id" element={<EventDetails />} />
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </main>
-        <Footer />
-      </div>
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppLayout />
     </BrowserRouter>
   );
 }

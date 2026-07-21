@@ -137,10 +137,9 @@ export function Checkout() {
           </div>
 
           <div className="mt-6 space-y-2 text-sm text-slate-400">
-            <p className="flex justify-between"><span>Subtotal</span><span>INR {Number(session.subtotal).toFixed(2)}</span></p>
-            <p className="flex justify-between"><span>Convenience fee</span><span>INR {Number(session.convenience_fee).toFixed(2)}</span></p>
-            <p className="flex justify-between"><span>GST</span><span>INR {Number(session.gst_amount).toFixed(2)}</span></p>
-            <p className="flex justify-between border-t border-slate-800 pt-3 text-lg font-black text-white"><span>Total</span><span className="text-amber-400">INR {Number(session.total_amount).toFixed(2)}</span></p>
+            <p className="flex justify-between"><span>Tickets</span><span>INR {Number(session.subtotal).toFixed(2)}</span></p>
+            <p className="flex justify-between"><span>Payment fee</span><span>INR {Number(session.convenience_fee).toFixed(2)}</span></p>
+            <p className="flex justify-between text-lg font-black text-white"><span>Total</span><span className="text-amber-400">INR {Number(session.total_amount).toFixed(2)}</span></p>
           </div>
 
           {error && <p className="mt-4 rounded-lg border border-rose-900 bg-rose-950/20 p-3 text-xs leading-5 text-rose-300">{error}</p>}

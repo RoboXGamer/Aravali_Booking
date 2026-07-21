@@ -27,7 +27,7 @@ export interface Seat {
   row_index: number;
   col_index: number;
   seat_number: string;
-  category_name: "VIP" | "Gold" | "Silver" | "Bronze";
+  category_name: "Gold" | "Silver" | "Bronze";
   price: string | number;
   status: "active" | "disabled";
   is_visible: boolean;
@@ -44,8 +44,7 @@ export interface AvailabilityResponse {
 export interface BookingSettings {
   max_seats_per_booking: number;
   seat_hold_minutes: number;
-  convenience_fee_per_seat: string | number;
-  gst_percentage: string | number;
+  razorpay_fee_percentage: string | number;
 }
 
 export interface CheckoutSession {

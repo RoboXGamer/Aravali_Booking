@@ -1,9 +1,7 @@
-import { Info, RefreshCw, ShieldCheck } from "lucide-react";
+import { Armchair, ArrowLeft, CalendarDays, ChevronDown, ChevronRight, Clock3, MapPin, RefreshCw, ShieldCheck, Ticket, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Button } from "../components/common/Button";
-import { Card } from "../components/common/Card";
 import { Input } from "../components/common/Input";
 import { SeatMap } from "../components/common/SeatMap";
 import { Spinner } from "../components/common/Spinner";
@@ -17,9 +15,11 @@ export function TicketBooking() {
   const [settings, setSettings] = useState<BookingSettings | null>(null);
   const [seats, setSeats] = useState<Seat[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<Seat["category_name"] | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -31,9 +31,7 @@ export function TicketBooking() {
     try {
       const availability = await api.get<AvailabilityResponse>(`/api/bookings/availability/${event_id}`);
       setSeats(availability.seats);
-      const availableIds = new Set(
-        availability.seats.filter((seat) => seat.availability === "available").map((seat) => seat.id),
-      );
+      const availableIds = new Set(availability.seats.filter((seat) => seat.availability === "available").map((seat) => seat.id));
       setSelectedIds((current) => current.filter((id) => availableIds.has(id)));
     } catch (reason) {
       if (!quiet) setError((reason as Error).message);
@@ -63,15 +61,20 @@ export function TicketBooking() {
 
   const selectedSeats = useMemo(() => seats.filter((seat) => selectedIds.includes(seat.id)), [seats, selectedIds]);
   const subtotal = selectedSeats.reduce((sum, seat) => sum + Number(seat.price), 0);
-  const fee = selectedSeats.length * Number(settings?.convenience_fee_per_seat || 0);
-  const gst = (subtotal + fee) * (Number(settings?.gst_percentage || 0) / 100);
-  const total = subtotal + fee + gst;
+  const razorpayFee = settings ? Math.round((subtotal * Number(settings.razorpay_fee_percentage) / 100) * 100) / 100 : 0;
+  const total = subtotal + razorpayFee;
 
   const toggleSeat = (seatId: string) => {
     setError("");
-    setSelectedIds((current) =>
-      current.includes(seatId) ? current.filter((id) => id !== seatId) : [...current, seatId],
-    );
+    const seat = seats.find((item) => item.id === seatId);
+    if (seat && !selectedCategory) setSelectedCategory(seat.category_name);
+    setSelectedIds((current) => current.includes(seatId) ? current.filter((id) => id !== seatId) : [...current, seatId]);
+  };
+
+  const chooseCategory = (category: Seat["category_name"] | null) => {
+    setError("");
+    setSelectedCategory(category);
+    setSelectedIds((current) => category ? current.filter((id) => seats.find((seat) => seat.id === id)?.category_name === category) : []);
   };
 
   const beginCheckout = async (event: FormEvent) => {
@@ -98,55 +101,85 @@ export function TicketBooking() {
     }
   };
 
-  if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><Spinner size="lg" /></div>;
+  if (loading) return <div className="flex min-h-screen items-center justify-center"><Spinner size="lg" /></div>;
   if (!show || !settings) return <div className="mx-auto max-w-2xl px-5 py-20 text-center text-rose-300">{error || "Booking is unavailable."}</div>;
 
+  const formattedDate = new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${show.date}T00:00:00`));
+
   return (
-    <div className="mx-auto max-w-7xl px-5 py-10 md:px-8">
-      <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-400">{show.title}</p>
-          <h1 className="mt-2 text-3xl font-black text-white">Choose your seats</h1>
-          <p className="mt-2 text-sm text-slate-400">{show.date} at {show.time.slice(0, 5)} · Maximum {settings.max_seats_per_booking} seats</p>
+    <div className="booking-page">
+      <main className="booking-panel">
+        <header className="booking-header">
+          <button type="button" onClick={() => navigate(-1)} aria-label="Go back"><ArrowLeft /></button>
+          <h1>Select Seats</h1>
+          <button type="button" onClick={() => void refreshAvailability()} disabled={refreshing} aria-label="Refresh seats"><RefreshCw className={refreshing ? "animate-spin" : ""} /></button>
+        </header>
+
+        <div className="booking-content">
+          <div className="booking-main-column">
+            <section className="booking-movie-summary">
+              <img src={show.poster_url || "https://placehold.co/120x180/111827/FFFFFF?text=Movie"} alt={show.title} />
+              <div>
+                <h2>{show.title}</h2>
+                <p><MapPin />{show.venue}</p>
+                <p><CalendarDays />{formattedDate}<span>•</span><Clock3 />{show.time.slice(0, 5)}<span>•</span><Ticket />Screen 1</p>
+              </div>
+            </section>
+
+            <section className="booking-map-wrap">
+              <SeatMap
+                seats={seats}
+                selectedSeatIds={selectedIds}
+                selectedCategory={selectedCategory}
+                onCategorySelect={chooseCategory}
+                onSeatSelect={toggleSeat}
+                maxSelectable={settings.max_seats_per_booking}
+              />
+            </section>
+            {error && !detailsOpen && <p className="booking-inline-error">{error}</p>}
+          </div>
+
+          <aside className="booking-sidebar">
+            <div className="booking-sidebar-summary">
+              <div><strong>Your Selection</strong><span>{selectedSeats.length} Seats</span></div>
+              <div><strong>Total</strong><strong>₹{total.toFixed(2)}</strong></div>
+              <button type="button">View Details <ChevronDown /></button>
+            </div>
+            <div className="booking-benefits">
+              <div><i><Ticket /></i><p><strong>Select your seats</strong><span>Tap on any available seat</span></p></div>
+              <div><i><Armchair /></i><p><strong>{selectedCategory ? `${selectedCategory} Category` : "Choose Category"}</strong><span>{selectedCategory ? "Comfortable & great view" : "Gold, Silver or Bronze"}</span></p></div>
+              <div><i><ShieldCheck /></i><p><strong>Secure Booking</strong><span>Your seats are reserved during checkout</span></p></div>
+            </div>
+          </aside>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => void refreshAvailability()} disabled={refreshing} className="gap-2 self-start">
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} /> Refresh seats
-        </Button>
-      </div>
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
-        <Card><SeatMap seats={seats} selectedSeatIds={selectedIds} onSeatSelect={toggleSeat} maxSelectable={settings.max_seats_per_booking} /></Card>
+        <footer className="booking-selection-bar">
+          <div>
+            <strong>{selectedSeats.length} {selectedSeats.length === 1 ? "Seat" : "Seats"} Selected</strong>
+            <span>{selectedSeats.length ? selectedSeats.map((seat) => seat.seat_number).join(", ") : "Choose your seats"}</span>
+          </div>
+          <div className="booking-total"><strong>₹{total.toFixed(2)}</strong><span>View Details</span></div>
+          <button type="button" disabled={!selectedSeats.length} onClick={() => { setError(""); setDetailsOpen(true); }}>
+            Continue <ChevronRight />
+          </button>
+        </footer>
+      </main>
 
-        <form onSubmit={beginCheckout} className="space-y-5 lg:sticky lg:top-24 lg:self-start">
-          <Card className="space-y-4">
-            <h2 className="font-extrabold text-white">Your details</h2>
+      {detailsOpen && (
+        <div className="booking-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailsOpen(false); }}>
+          <form className="booking-details-modal" onSubmit={beginCheckout}>
+            <div className="booking-modal-header"><div><span>Step 3 of 4</span><h2>Your details</h2></div><button type="button" onClick={() => setDetailsOpen(false)} aria-label="Close"><X /></button></div>
             <Input label="Full name" required value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" />
             <Input label="Email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
             <Input label="Phone (optional)" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" />
-            <p className="flex gap-2 rounded-lg bg-slate-900 p-3 text-xs leading-5 text-slate-400">
-              <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" /> No account required. Your email and booking code retrieve the ticket.
-            </p>
-          </Card>
-
-          <Card>
-            <h2 className="font-extrabold text-white">Order summary</h2>
-            <p className="mt-3 min-h-5 text-sm font-semibold text-amber-400">
-              {selectedSeats.length ? selectedSeats.map((seat) => seat.seat_number).join(", ") : "No seats selected"}
-            </p>
-            <div className="mt-5 space-y-2 border-t border-slate-800 pt-4 text-sm text-slate-400">
-              <p className="flex justify-between"><span>Seats</span><span>INR {subtotal.toFixed(2)}</span></p>
-              <p className="flex justify-between"><span>Convenience fee</span><span>INR {fee.toFixed(2)}</span></p>
-              <p className="flex justify-between"><span>GST</span><span>INR {gst.toFixed(2)}</span></p>
-              <p className="flex justify-between border-t border-slate-800 pt-3 text-base font-black text-white"><span>Total</span><span className="text-amber-400">INR {total.toFixed(2)}</span></p>
-            </div>
-
-            {error && <p className="mt-4 rounded-lg border border-rose-900 bg-rose-950/20 p-3 text-xs text-rose-300">{error}</p>}
-            <Button type="submit" className="mt-5 w-full gap-2" disabled={submitting || !name.trim() || !email.trim() || selectedIds.length === 0}>
-              <ShieldCheck className="h-4 w-4" /> {submitting ? "Holding seats…" : "Hold seats & continue"}
-            </Button>
-          </Card>
-        </form>
-      </div>
+            <div className="booking-modal-summary"><span>{selectedSeats.map((seat) => seat.seat_number).join(", ")} · Includes {Number(settings.razorpay_fee_percentage)}% payment fee</span><strong>₹{total.toFixed(2)}</strong></div>
+            {error && <p className="booking-inline-error">{error}</p>}
+            <button className="booking-checkout-button" type="submit" disabled={submitting || !name.trim() || !email.trim()}>
+              <ShieldCheck /> {submitting ? "Holding seats..." : "Continue to payment"}
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

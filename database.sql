@@ -49,10 +49,12 @@ CREATE TABLE public.app_settings (
         CHECK (max_seats_per_booking BETWEEN 1 AND 20),
     seat_hold_minutes INTEGER NOT NULL DEFAULT 10
         CHECK (seat_hold_minutes BETWEEN 1 AND 30),
-    convenience_fee_per_seat NUMERIC(10, 2) NOT NULL DEFAULT 30.00
+    convenience_fee_per_seat NUMERIC(10, 2) NOT NULL DEFAULT 0.00
         CHECK (convenience_fee_per_seat >= 0),
-    gst_percentage NUMERIC(5, 2) NOT NULL DEFAULT 18.00
+    gst_percentage NUMERIC(5, 2) NOT NULL DEFAULT 0.00
         CHECK (gst_percentage BETWEEN 0 AND 100),
+    razorpay_fee_percentage NUMERIC(5, 2) NOT NULL DEFAULT 2.00
+        CHECK (razorpay_fee_percentage BETWEEN 0 AND 100),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -161,7 +163,7 @@ CREATE TABLE public.seat_layouts (
     col_index INTEGER NOT NULL CHECK (col_index > 0),
     seat_number TEXT NOT NULL,
     category_name TEXT NOT NULL
-        CHECK (category_name IN ('VIP', 'Gold', 'Silver', 'Bronze')),
+        CHECK (category_name IN ('Gold', 'Silver', 'Bronze')),
     price NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
     status TEXT NOT NULL DEFAULT 'active'
         CHECK (status IN ('active', 'disabled')),
@@ -430,11 +432,11 @@ INSERT INTO public.seat_layouts (
     price
 )
 VALUES
-    ('Balcony', 'A', 1, 1, 'A-1', 'VIP', 600.00),
-    ('Balcony', 'A', 1, 2, 'A-2', 'VIP', 600.00),
-    ('Balcony', 'A', 1, 3, 'A-3', 'VIP', 600.00),
-    ('Balcony', 'A', 1, 4, 'A-4', 'VIP', 600.00),
-    ('Balcony', 'A', 1, 5, 'A-5', 'VIP', 600.00),
+    ('Balcony', 'A', 1, 1, 'A-1', 'Gold', 600.00),
+    ('Balcony', 'A', 1, 2, 'A-2', 'Gold', 600.00),
+    ('Balcony', 'A', 1, 3, 'A-3', 'Gold', 600.00),
+    ('Balcony', 'A', 1, 4, 'A-4', 'Gold', 600.00),
+    ('Balcony', 'A', 1, 5, 'A-5', 'Gold', 600.00),
     ('Ground Left', 'B', 2, 1, 'B-1', 'Gold', 400.00),
     ('Ground Left', 'B', 2, 2, 'B-2', 'Gold', 400.00),
     ('Ground Left', 'B', 2, 3, 'B-3', 'Gold', 400.00),
