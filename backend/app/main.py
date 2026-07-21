@@ -10,30 +10,31 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config.settings import settings
 from app.routers import events, bookings, admin, polls
 
-app = FastAPI(
+fastapi_app = FastAPI(
     title="Aravalli Auditorium Ticketing System",
     description="Custom microservice handling secure routing, signatures mapping, and pdf streams compilation.",
     version="2.0.0",
     redirect_slashes=False
 )
 
-# CORS configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+fastapi_app.include_router(events.router)
+fastapi_app.include_router(bookings.router)
+fastapi_app.include_router(admin.router)
+fastapi_app.include_router(polls.router)
+
+@fastapi_app.get("/")
+def read_root():
+    return {"status": "healthy", "service": "Aravalli Core API"}
+
+# Wrap the complete application so even unexpected 500 responses receive CORS
+# headers. Otherwise browsers hide the useful server error behind a CORS error.
+app = CORSMiddleware(
+    app=fastapi_app,
+    allow_origins=[settings.FRONTEND_URL],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-app.include_router(events.router)
-app.include_router(bookings.router)
-app.include_router(admin.router)
-app.include_router(polls.router)
-
-@app.get("/")
-def read_root():
-    return {"status": "healthy", "service": "Aravalli Core API"}
 
 if __name__ == "__main__":
     # Use 'app.main:app' as the import string so uvicorn resolves paths cleanly from the root directory
