@@ -1,88 +1,116 @@
 import io
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from typing import Any, Dict
+
 from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
 from app.utils.qr_generator import generate_qr_code_bytes
 
-def create_ticket_pdf_stream(booking: dict, event: dict, category: dict) -> io.BytesIO:
+
+def create_ticket_pdf_stream(booking: Dict[str, Any]) -> io.BytesIO:
+    """Create a ticket for the current booking schema.
+
+    The QR payload intentionally contains only the public booking code.
+    """
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
+    document = SimpleDocTemplate(
         buffer,
-        pagesize=letter,
-        rightMargin=40,
-        leftMargin=40,
-        topMargin=40,
-        bottomMargin=40
+        pagesize=A4,
+        rightMargin=42,
+        leftMargin=42,
+        topMargin=42,
+        bottomMargin=42,
+        title=f"Aravalli Ticket {booking['booking_code']}",
     )
-    story = []
+
     styles = getSampleStyleSheet()
-
-    primary_bg = colors.HexColor("#0f172a")
-    brand_emerald = colors.HexColor("#10b981")
-    dark_gray = colors.HexColor("#334155")
-
     title_style = ParagraphStyle(
-        'DocTitle',
-        parent=styles['Heading1'],
-        fontName='Helvetica-Bold',
-        fontSize=24,
-        textColor=primary_bg,
-        spaceAfter=10
+        "TicketTitle",
+        parent=styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=23,
+        textColor=colors.HexColor("#0F1115"),
+        spaceAfter=7,
     )
-
-    meta_style = ParagraphStyle(
-        'MetaText',
-        parent=styles['Normal'],
+    subtitle_style = ParagraphStyle(
+        "TicketSubtitle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
         fontSize=10,
-        textColor=dark_gray,
-        leading=14
+        textColor=colors.HexColor("#9A7B18"),
+        leading=14,
+    )
+    body_style = ParagraphStyle(
+        "TicketBody",
+        parent=styles["Normal"],
+        fontSize=10,
+        textColor=colors.HexColor("#334155"),
+        leading=15,
+    )
+    label_style = ParagraphStyle(
+        "TicketLabel",
+        parent=body_style,
+        fontName="Helvetica-Bold",
     )
 
-    field_style = ParagraphStyle(
-        'FieldLabel',
-        parent=meta_style,
-        fontName='Helvetica-Bold'
+    show = booking.get("shows") or {}
+    movie = show.get("movies") or {}
+    seats = booking.get("booking_seats") or []
+    seat_numbers = ", ".join(seat.get("seat_number", "") for seat in seats) or "Not assigned"
+    booking_code = booking["booking_code"]
+
+    qr_image = Image(
+        io.BytesIO(generate_qr_code_bytes(booking_code)),
+        width=120,
+        height=120,
     )
 
-    story.append(Paragraph("ARAVALLI AUDITORIUM", title_style))
-    story.append(Paragraph("E-TICKET & ADMISSION VOUCHER", meta_style))
-    story.append(Spacer(1, 20))
+    details = [
+        [Paragraph("Movie", label_style), Paragraph(movie.get("title", "Aravalli Screening"), body_style)],
+        [Paragraph("Date &amp; time", label_style), Paragraph(f"{show.get('date', '')} at {show.get('time', '')}", body_style)],
+        [Paragraph("Seats", label_style), Paragraph(seat_numbers, body_style)],
+        [Paragraph("Guest", label_style), Paragraph(booking.get("customer_name", ""), body_style)],
+        [Paragraph("Booking ID", label_style), Paragraph(booking_code, body_style)],
+        [Paragraph("Amount paid", label_style), Paragraph(f"INR {booking.get('total_amount', 0)}", body_style)],
+    ]
+    detail_table = Table(details, colWidths=[105, 285])
+    detail_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("LINEBELOW", (0, -1), (-1, -1), 1, colors.HexColor("#D4AF37")),
+            ]
+        )
+    )
 
-    qr_payload = f"Booking Ref: {booking['id']}\nHolder: {booking['customer_name']}\nSeats Count: {booking['quantity']}"
-    qr_bytes = generate_qr_code_bytes(qr_payload)
-    qr_image = Image(io.BytesIO(qr_bytes), width=110, height=110)
+    ticket_layout = Table([[detail_table, qr_image]], colWidths=[400, 125])
+    ticket_layout.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#D4AF37")),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 14),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+                ("TOPPADDING", (0, 0), (-1, -1), 14),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
+            ]
+        )
+    )
 
-    info_rows = [
-        [Paragraph("Event Title:", field_style), Paragraph(event.get('title', 'Cinema Movie'), meta_style)],
-        [Paragraph("Venue Area:", field_style), Paragraph(event.get('venue', 'Aravalli Auditorium'), meta_style)],
-        [Paragraph("Date & Time:", field_style), Paragraph(f"{event.get('date')} | {event.get('time')}", meta_style)],
-        [Paragraph("Admit Count:", field_style), Paragraph(f"{booking['quantity']} Seats", meta_style)],
-        [Paragraph("Invoice Total:", field_style), Paragraph(f"INR {booking['grand_total']}", meta_style)],
-        [Paragraph("Clearance Ref:", field_style), Paragraph(booking['id'], meta_style)]
+    story = [
+        Paragraph("ARAVALLI AUDITORIUM", title_style),
+        Paragraph("CONFIRMED ADMISSION TICKET", subtitle_style),
+        Spacer(1, 22),
+        ticket_layout,
+        Spacer(1, 18),
+        Paragraph("Present this QR code at the auditorium entrance. It contains only your booking ID.", body_style),
+        Paragraph("A ticket can be checked in once. Keep this document private.", body_style),
     ]
 
-    info_table = Table(info_rows, colWidths=[130, 250])
-    info_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-    ]))
-
-    layout_table = Table([[info_table, qr_image]], colWidths=[380, 120])
-    layout_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LINEBELOW', (0, 0), (-1, -1), 1, brand_emerald),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 15),
-    ]))
-
-    story.append(layout_table)
-    story.append(Spacer(1, 20))
-
-    story.append(Paragraph("POLICIES & ADMISSION RULES:", field_style))
-    story.append(Spacer(1, 5))
-    story.append(Paragraph("1. Verification requires presentation of this original digital layout at the security desk.", meta_style))
-    story.append(Paragraph("2.Snacks, liquids, baggages, and matches are strictly restricted inside the Main Hall.", meta_style))
-
-    doc.build(story)
+    document.build(story)
     buffer.seek(0)
     return buffer

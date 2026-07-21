@@ -198,8 +198,8 @@ CREATE TABLE public.checkout_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     show_id UUID NOT NULL REFERENCES public.shows(id) ON DELETE RESTRICT,
     customer_name TEXT NOT NULL,
-    customer_phone TEXT NOT NULL,
-    customer_email TEXT,
+    customer_email TEXT NOT NULL,
+    customer_phone TEXT,
     subtotal NUMERIC(10, 2) NOT NULL CHECK (subtotal >= 0),
     convenience_fee NUMERIC(10, 2) NOT NULL CHECK (convenience_fee >= 0),
     gst_amount NUMERIC(10, 2) NOT NULL CHECK (gst_amount >= 0),
@@ -214,8 +214,8 @@ CREATE TABLE public.checkout_sessions (
 
 CREATE INDEX idx_checkout_sessions_expiry
     ON public.checkout_sessions(status, expires_at);
-CREATE INDEX idx_checkout_sessions_phone
-    ON public.checkout_sessions(customer_phone);
+CREATE INDEX idx_checkout_sessions_email
+    ON public.checkout_sessions(LOWER(customer_email));
 
 CREATE TRIGGER checkout_sessions_set_updated_at
 BEFORE UPDATE ON public.checkout_sessions
@@ -259,8 +259,8 @@ CREATE TABLE public.bookings (
         REFERENCES public.checkout_sessions(id) ON DELETE RESTRICT,
     show_id UUID NOT NULL REFERENCES public.shows(id) ON DELETE RESTRICT,
     customer_name TEXT NOT NULL,
-    customer_phone TEXT NOT NULL,
-    customer_email TEXT,
+    customer_email TEXT NOT NULL,
+    customer_phone TEXT,
     subtotal NUMERIC(10, 2) NOT NULL CHECK (subtotal >= 0),
     convenience_fee NUMERIC(10, 2) NOT NULL CHECK (convenience_fee >= 0),
     gst_amount NUMERIC(10, 2) NOT NULL CHECK (gst_amount >= 0),
@@ -273,8 +273,8 @@ CREATE TABLE public.bookings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_bookings_code_phone
-    ON public.bookings(booking_code, customer_phone);
+CREATE INDEX idx_bookings_code_email
+    ON public.bookings(booking_code, LOWER(customer_email));
 CREATE INDEX idx_bookings_show ON public.bookings(show_id);
 CREATE INDEX idx_bookings_created ON public.bookings(created_at DESC);
 

@@ -1,4 +1,6 @@
+import asyncio
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 # Dynamically add the project root to sys.path so 'app' imports resolve correctly on Windows
@@ -8,13 +10,41 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config.settings import settings
+from app.models.database import supabase
 from app.routers import events, bookings, admin, polls
+
+
+async def cleanup_expired_holds() -> None:
+    while True:
+        try:
+            await asyncio.to_thread(
+                lambda: supabase.rpc("cleanup_expired_checkout_sessions").execute()
+            )
+        except Exception:
+            # A failed cleanup cycle must not stop the API. Availability and
+            # checkout creation also invoke the same cleanup defensively.
+            pass
+        await asyncio.sleep(60)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    cleanup_task = asyncio.create_task(cleanup_expired_holds())
+    try:
+        yield
+    finally:
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
 
 fastapi_app = FastAPI(
     title="Aravalli Auditorium Ticketing System",
     description="Custom microservice handling secure routing, signatures mapping, and pdf streams compilation.",
     version="2.0.0",
-    redirect_slashes=False
+    redirect_slashes=False,
+    lifespan=lifespan,
 )
 
 fastapi_app.include_router(events.router)

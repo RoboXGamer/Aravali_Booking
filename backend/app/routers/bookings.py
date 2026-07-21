@@ -1,156 +1,286 @@
-from uuid import uuid4
-from fastapi import APIRouter, HTTPException, Depends
-from typing import List, Optional
-from pydantic import BaseModel, Field
+from decimal import Decimal, ROUND_HALF_UP
+from typing import Any, Dict, Optional
+
 import razorpay
-from app.models.database import supabase
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from postgrest.exceptions import APIError
+
 from app.config.settings import settings
-from app.services.notifications import notification_service
+from app.models.database import supabase
+from app.schemas.booking import BookingLookup, CheckoutSessionCreate, PaymentVerify
+from app.services.pdf_generator import create_ticket_pdf_stream
 
-router = APIRouter(prefix="/api/bookings", tags=["Cinema Bookings"])
 
+router = APIRouter(prefix="/api/bookings", tags=["Public Bookings"])
 rzp_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_SECRET))
 
-class AnonymousBookingCreate(BaseModel):
-    show_id: str
-    customer_name: str
-    customer_phone: str
-    customer_email: Optional[str] = None
-    seat_layout_ids: List[str] = Field(..., min_items=1)
 
-class PaymentVerify(BaseModel):
-    razorpay_order_id: str
-    razorpay_payment_id: str
-    razorpay_signature: str
+def _money_to_paise(value: Any) -> int:
+    return int((Decimal(str(value)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def _rpc_payload(response: Any) -> Dict[str, Any]:
+    data = response.data
+    if isinstance(data, list):
+        data = data[0] if data else None
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=500, detail="Database returned an invalid booking response.")
+    return data
+
+
+def _database_error(exc: APIError, fallback: str) -> HTTPException:
+    message = str(getattr(exc, "message", "") or exc)
+    lowered = message.lower()
+    if any(term in lowered for term in ("unavailable", "already", "expired", "reserved", "disabled")):
+        return HTTPException(status_code=409, detail=message)
+    if any(term in lowered for term in ("invalid", "maximum", "required", "not found")):
+        return HTTPException(status_code=400, detail=message)
+    return HTTPException(status_code=502, detail=fallback)
+
+
+def _booking_query(booking_code: str, customer_email: str) -> Optional[Dict[str, Any]]:
+    response = (
+        supabase.table("bookings")
+        .select("*, shows(*, movies(*)), booking_seats(*)")
+        .eq("booking_code", booking_code.strip().upper())
+        .eq("customer_email", customer_email.strip().lower())
+        .limit(1)
+        .execute()
+    )
+    return response.data[0] if response.data else None
+
+
+@router.get("/settings")
+def get_booking_settings():
+    try:
+        response = supabase.table("app_settings").select("*").eq("id", 1).single().execute()
+        return response.data
+    except APIError as exc:
+        raise HTTPException(status_code=502, detail="Unable to load booking settings.") from exc
+
 
 @router.get("/availability/{show_id}")
-def get_booked_seats(show_id: str):
-    seats_query = supabase.table("booking_seats").select("seat_layout_id").eq("show_id", show_id).execute()
-    booked_ids = [row["seat_layout_id"] for row in (seats_query.data or [])]
-    return {"booked_seat_layout_ids": booked_ids}
-
-@router.post("/")
-def init_anonymous_booking(payload: AnonymousBookingCreate):
-    show_query = supabase.table("shows").select("*, movies(*)").eq("id", payload.show_id).eq("is_enabled", True).execute()
-    if not show_query.data:
-        raise HTTPException(status_code=404, detail="Show session is either unavailable or disabled.")
-    
-    show = show_query.data[0]
-
-    seats_query = supabase.table("seat_layouts").select("*").in_("id", payload.seat_layout_ids).execute()
-    seats_map = {row["id"]: row for row in (seats_query.data or [])}
-
-    for s_id in payload.seat_layout_ids:
-        if s_id not in seats_map:
-            raise HTTPException(status_code=400, detail="Invalid seat selected.")
-        seat = seats_map[s_id]
-        if seat["status"] != "active":
-            raise HTTPException(status_code=400, detail=f"Seat {seat['seat_number']} is currently unavailable.")
-
-    conflicts_query = supabase.table("booking_seats")\
-        .select("seat_layout_id")\
-        .eq("show_id", payload.show_id)\
-        .in_("seat_layout_id", payload.seat_layout_ids)\
-        .execute()
-    
-    if conflicts_query.data:
-        raise HTTPException(status_code=400, detail="One or more selected seats were already booked by another user.")
-
-    subtotal = sum(float(seats_map[s_id]["price"]) for s_id in payload.seat_layout_ids)
-    convenience_fee = 30.00 * len(payload.seat_layout_ids)
-    gst = (subtotal + convenience_fee) * 0.18
-    grand_total = subtotal + convenience_fee + gst
-
-    # Supabase's existing bookings table uses a UUID primary key. Keep the ID
-    # as a string at the API boundary while storing a valid UUID in Postgres.
-    booking_id = str(uuid4())
-
-    booking_payload = {
-        "id": booking_id,
-        "show_id": payload.show_id,
-        "customer_name": payload.customer_name,
-        "customer_phone": payload.customer_phone,
-        "customer_email": payload.customer_email,
-        "total_amount": grand_total,
-        "status": "pending"
-    }
-
-    booking_insert = supabase.table("bookings").insert(booking_payload).execute()
-    if not booking_insert.data:
-        raise HTTPException(status_code=500, detail="Failed to initialize reservation order state.")
-
-    booking_seats_payload = [
-        {"booking_id": booking_id, "show_id": payload.show_id, "seat_layout_id": s_id}
-        for s_id in payload.seat_layout_ids
-    ]
+def get_show_availability(show_id: str):
     try:
-        supabase.table("booking_seats").insert(booking_seats_payload).execute()
-    except Exception:
-        supabase.table("bookings").delete().eq("id", booking_id).execute()
-        raise HTTPException(status_code=400, detail="A seat has just been locked by another user session.")
+        supabase.rpc("cleanup_expired_checkout_sessions").execute()
 
-    try:
-        rzp_order = rzp_client.order.create(data={
-            "amount": int(grand_total * 100),
-            "currency": "INR",
-            "receipt": booking_id,
-            "payment_capture": 1
-        })
-    except Exception as e:
-        supabase.table("bookings").delete().eq("id", booking_id).execute()
-        raise HTTPException(status_code=500, detail=f"Payment partner handshake failed: {str(e)}")
+        show_response = (
+            supabase.table("shows")
+            .select("id")
+            .eq("id", show_id)
+            .eq("is_enabled", True)
+            .limit(1)
+            .execute()
+        )
+        if not show_response.data:
+            raise HTTPException(status_code=404, detail="Show not found or no longer enabled.")
 
-    payment_payload = {
-        "booking_id": booking_id,
-        "razorpay_order_id": rzp_order["id"],
-        "amount": grand_total,
-        "status": "initiated"
-    }
-    supabase.table("payments").insert(payment_payload).execute()
+        seats = (
+            supabase.table("seat_layouts")
+            .select("*")
+            .eq("is_visible", True)
+            .order("row_index")
+            .order("col_index")
+            .execute()
+        ).data or []
+        booked = (
+            supabase.table("booking_seats")
+            .select("seat_layout_id")
+            .eq("show_id", show_id)
+            .execute()
+        ).data or []
+        reserved = (
+            supabase.table("show_seat_reservations")
+            .select("seat_layout_id")
+            .eq("show_id", show_id)
+            .execute()
+        ).data or []
+        held = (
+            supabase.table("checkout_session_seats")
+            .select("seat_layout_id, checkout_sessions!inner(status, expires_at)")
+            .eq("show_id", show_id)
+            .eq("checkout_sessions.status", "pending")
+            .execute()
+        ).data or []
+    except HTTPException:
+        raise
+    except APIError as exc:
+        raise HTTPException(status_code=502, detail="Unable to load seat availability.") from exc
+
+    booked_ids = {row["seat_layout_id"] for row in booked}
+    reserved_ids = {row["seat_layout_id"] for row in reserved}
+    held_ids = {row["seat_layout_id"] for row in held}
+
+    for seat in seats:
+        seat_id = seat["id"]
+        if seat.get("status") == "disabled":
+            availability = "disabled"
+        elif seat_id in booked_ids:
+            availability = "booked"
+        elif seat_id in reserved_ids:
+            availability = "reserved"
+        elif seat_id in held_ids:
+            availability = "held"
+        else:
+            availability = "available"
+        seat["availability"] = availability
 
     return {
-        "booking": booking_insert.data[0],
-        "razorpay_order": rzp_order
+        "show_id": show_id,
+        "seats": seats,
+        "booked_seat_layout_ids": sorted(booked_ids | held_ids),
+        "reserved_seat_layout_ids": sorted(reserved_ids),
     }
 
-@router.post("/verify")
-def verify_cinema_payment(payload: PaymentVerify):
+
+@router.post("/checkout-sessions")
+@router.post("/")
+def create_checkout_session(payload: CheckoutSessionCreate):
     try:
-        signature_valid = rzp_client.utility.verify_payment_signature({
-            "razorpay_order_id": payload.razorpay_order_id,
-            "razorpay_payment_id": payload.razorpay_payment_id,
-            "razorpay_signature": payload.razorpay_signature
-        })
-    except Exception:
-        signature_valid = False
+        rpc_response = supabase.rpc(
+            "create_checkout_session",
+            {
+                "p_show_id": payload.show_id,
+                "p_customer_name": payload.customer_name,
+                "p_customer_phone": payload.customer_phone,
+                "p_customer_email": payload.customer_email,
+                "p_seat_ids": payload.seat_layout_ids,
+            },
+        ).execute()
+        checkout = _rpc_payload(rpc_response)
+    except APIError as exc:
+        raise _database_error(exc, "Unable to hold the selected seats.") from exc
 
-    if not signature_valid:
-        raise HTTPException(status_code=400, detail="Invalid merchant transaction signature detected.")
+    session = checkout["checkout_session"]
+    try:
+        razorpay_order = rzp_client.order.create(
+            data={
+                "amount": _money_to_paise(session["total_amount"]),
+                "currency": "INR",
+                "receipt": session["id"],
+                "notes": {"checkout_session_id": session["id"], "show_id": payload.show_id},
+            }
+        )
 
-    payment_query = supabase.table("payments").select("*").eq("razorpay_order_id", payload.razorpay_order_id).execute()
-    if not payment_query.data:
-        raise HTTPException(status_code=404, detail="Staged payment tracker not found.")
+        supabase.table("checkout_sessions").update(
+            {"razorpay_order_id": razorpay_order["id"]}
+        ).eq("id", session["id"]).execute()
 
-    payment_row = payment_query.data[0]
-    booking_id = payment_row["booking_id"]
+        supabase.table("payments").insert(
+            {
+                "checkout_session_id": session["id"],
+                "provider_order_id": razorpay_order["id"],
+                "amount": session["total_amount"],
+                "status": "created",
+            }
+        ).execute()
+    except Exception as exc:
+        try:
+            supabase.rpc("release_checkout_session", {"p_session_id": session["id"]}).execute()
+        except Exception:
+            pass
+        raise HTTPException(status_code=502, detail="Unable to initialize Razorpay checkout.") from exc
 
-    supabase.table("bookings").update({"status": "confirmed"}).eq("id", booking_id).execute()
+    session["razorpay_order_id"] = razorpay_order["id"]
+    return {
+        "checkout_session": session,
+        "selected_seats": checkout["selected_seats"],
+        "razorpay_order": razorpay_order,
+        # Compatibility alias for the existing checkout screen until Phase 4.
+        "booking": session,
+    }
 
-    supabase.table("payments").update({
-        "razorpay_payment_id": payload.razorpay_payment_id,
-        "razorpay_signature": payload.razorpay_signature,
-        "status": "captured"
-    }).eq("id", payment_row["id"]).execute()
 
-    booking_query = supabase.table("bookings").select("*, shows(*, movies(*))").eq("id", booking_id).execute()
-    if booking_query.data:
-        b_data = booking_query.data[0]
-        email_addr = b_data.get("customer_email")
-        if email_addr:
-            notification_service.send_email(
-                to_email=email_addr,
-                subject=f"Ticket Confirmed - Aravalli Auditorium: {booking_id}",
-                body=f"Hello {b_data['customer_name']},\n\nYour seats for {b_data['shows']['movies']['title']} are successfully booked.\n\nBooking Reference: {booking_id}"
-            )
+@router.post("/verify")
+def verify_payment(payload: PaymentVerify):
+    try:
+        rzp_client.utility.verify_payment_signature(
+            {
+                "razorpay_order_id": payload.razorpay_order_id,
+                "razorpay_payment_id": payload.razorpay_payment_id,
+                "razorpay_signature": payload.razorpay_signature,
+            }
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid Razorpay payment signature.") from exc
 
-    return {"status": "success", "booking_id": booking_id}
+    try:
+        session_query = (
+            supabase.table("checkout_sessions")
+            .select("id")
+            .eq("razorpay_order_id", payload.razorpay_order_id)
+            .limit(1)
+            .execute()
+        )
+        if not session_query.data:
+            raise HTTPException(status_code=404, detail="Checkout session not found.")
+
+        session_id = session_query.data[0]["id"]
+        if payload.checkout_session_id and payload.checkout_session_id != session_id:
+            raise HTTPException(status_code=400, detail="Payment does not match the checkout session.")
+
+        finalized = _rpc_payload(
+            supabase.rpc(
+                "finalize_paid_booking",
+                {
+                    "p_session_id": session_id,
+                    "p_provider_payment_id": payload.razorpay_payment_id,
+                    "p_provider_signature": payload.razorpay_signature,
+                },
+            ).execute()
+        )
+    except HTTPException:
+        raise
+    except APIError as exc:
+        raise _database_error(exc, "Payment succeeded but booking finalization failed.") from exc
+
+    booking = finalized["booking"]
+    return {
+        "status": "success",
+        "booking_id": booking["booking_code"],
+        "booking_code": booking["booking_code"],
+        "booking": booking,
+    }
+
+
+@router.post("/lookup")
+def lookup_booking(payload: BookingLookup):
+    try:
+        booking = _booking_query(payload.booking_code, payload.customer_email)
+    except APIError as exc:
+        raise HTTPException(status_code=502, detail="Unable to retrieve booking.") from exc
+    if not booking:
+        raise HTTPException(status_code=404, detail="No booking matches that code and email address.")
+    return booking
+
+
+@router.get("/ticket/{booking_code}/download")
+def download_ticket(booking_code: str, email: str = Query(..., min_length=5, max_length=255)):
+    try:
+        booking = _booking_query(booking_code, email)
+    except APIError as exc:
+        raise HTTPException(status_code=502, detail="Unable to create ticket.") from exc
+    if not booking:
+        raise HTTPException(status_code=404, detail="No booking matches that code and email address.")
+    if booking.get("status") != "confirmed":
+        raise HTTPException(status_code=409, detail="Only confirmed bookings have downloadable tickets.")
+
+    ticket_stream = create_ticket_pdf_stream(booking)
+    filename = f"Aravalli-{booking['booking_code']}.pdf"
+    return StreamingResponse(
+        ticket_stream,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{booking_code}")
+def get_booking(booking_code: str, email: str = Query(..., min_length=5, max_length=255)):
+    try:
+        booking = _booking_query(booking_code, email)
+    except APIError as exc:
+        raise HTTPException(status_code=502, detail="Unable to retrieve booking.") from exc
+    if not booking:
+        raise HTTPException(status_code=404, detail="No booking matches that code and email address.")
+    return booking

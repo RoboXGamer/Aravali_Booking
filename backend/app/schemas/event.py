@@ -1,39 +1,23 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List
-from datetime import date, time, datetime
+from typing import Optional
 
-class TicketCategoryBase(BaseModel):
-    name: str
-    price: float
-    total_seats: int
+from pydantic import BaseModel
 
-class TicketCategoryCreate(TicketCategoryBase):
-    pass
 
-class TicketCategoryResponse(TicketCategoryBase):
+class ShowResponse(BaseModel):
     id: str
-    event_id: str
-    available_seats: int
-
-    class Config:
-        from_attributes = True
-
-class EventBase(BaseModel):
+    movie_id: str
     title: str
     description: Optional[str] = None
-    date: date
-    time: time
-    venue: str = "Aravalli Auditorium Main Hall"
+    date: str
+    time: str
+    venue: str
     poster_url: Optional[str] = None
-    status: str = "active"
-
-class EventCreate(EventBase):
-    categories: List[TicketCategoryCreate]
-
-class EventResponse(EventBase):
-    id: str
-    created_at: datetime
-    categories: List[TicketCategoryResponse] = []
-
-    class Config:
-        from_attributes = True
+    trailer_url: Optional[str] = None
+    duration_minutes: int
+    genre: str
+    certificate: str
+    language: str
+    cast_members: Optional[str] = None
+    director: Optional[str] = None
+    release_year: int
+    status: str
