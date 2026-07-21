@@ -1,4 +1,4 @@
-import { ArrowRight, CalendarDays, Search, ShieldCheck } from "lucide-react";
+import { ArrowRight, BarChart3, CalendarDays, Search, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -39,6 +39,11 @@ export function LandingPage() {
             <Link to="/find-booking">
               <Button size="lg" variant="secondary" className="w-full gap-2 sm:w-auto">
                 <Search className="h-4 w-4" /> Find booking
+              </Button>
+            </Link>
+            <Link to="/poll">
+              <Button size="lg" variant="ghost" className="w-full gap-2 sm:w-auto">
+                <BarChart3 className="h-4 w-4" /> Vote for next week
               </Button>
             </Link>
           </div>

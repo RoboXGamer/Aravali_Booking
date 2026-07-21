@@ -8,6 +8,7 @@ import { Confirmation } from "./pages/Confirmation";
 import { EventDetails } from "./pages/EventDetails";
 import { EventsPage } from "./pages/EventsPage";
 import { LandingPage } from "./pages/LandingPage";
+import { MoviePoll } from "./pages/MoviePoll";
 import { TicketBooking } from "./pages/TicketBooking";
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/confirmation/:booking_code" element={<Confirmation />} />
             <Route path="/find-booking" element={<BookingLookup />} />
+            <Route path="/poll" element={<MoviePoll />} />
 
             {/* Temporary aliases for old shared links. */}
             <Route path="/events" element={<Navigate to="/shows" replace />} />

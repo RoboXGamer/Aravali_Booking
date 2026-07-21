@@ -11,6 +11,7 @@ export function Footer() {
         <div className="flex gap-6 text-sm font-semibold text-slate-400">
           <Link to="/shows" className="hover:text-white">Showtimes</Link>
           <Link to="/find-booking" className="hover:text-white">Find booking</Link>
+          <Link to="/poll" className="hover:text-white">Movie poll</Link>
         </div>
       </div>
       <div className="border-t border-slate-900 py-5 text-center text-xs text-slate-600">

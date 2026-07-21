@@ -20,6 +20,9 @@ async def cleanup_expired_holds() -> None:
             await asyncio.to_thread(
                 lambda: supabase.rpc("cleanup_expired_checkout_sessions").execute()
             )
+            await asyncio.to_thread(
+                lambda: supabase.rpc("close_due_polls").execute()
+            )
         except Exception:
             # A failed cleanup cycle must not stop the API. Availability and
             # checkout creation also invoke the same cleanup defensively.

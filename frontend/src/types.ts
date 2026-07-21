@@ -117,3 +117,42 @@ export interface RazorpaySuccessResponse {
   razorpay_payment_id: string;
   razorpay_signature: string;
 }
+
+export interface PollMovie {
+  id: string;
+  title: string;
+  synopsis: string | null;
+  poster_url: string | null;
+  genre: string;
+  language: string;
+  duration_minutes: number;
+  certificate: string;
+}
+
+export interface PollOption {
+  id: string;
+  movie_id: string;
+  votes_count: number;
+  percentage: number;
+  movie: PollMovie;
+}
+
+export interface Poll {
+  id: string;
+  week_start: string;
+  voting_starts_at: string;
+  voting_ends_at: string;
+  status: "draft" | "voting" | "closed" | "overridden";
+  winning_movie_id: string | null;
+  overridden_movie_id: string | null;
+  winning_movie?: PollMovie | null;
+}
+
+export interface PollResponse {
+  poll: Poll | null;
+  options: PollOption[];
+  total_votes: number;
+  has_voted: boolean;
+  selected_option_id: string | null;
+  is_open: boolean;
+}

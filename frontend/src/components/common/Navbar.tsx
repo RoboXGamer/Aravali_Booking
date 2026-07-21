@@ -1,4 +1,4 @@
-import { Menu, Search, Ticket, X } from "lucide-react";
+import { BarChart3, Menu, Search, Ticket, X } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 
@@ -27,6 +27,9 @@ export function Navbar() {
           <NavLink to="/find-booking" className={navClass}>
             <Search className="h-4 w-4" /> Find booking
           </NavLink>
+          <NavLink to="/poll" className={navClass}>
+            <BarChart3 className="h-4 w-4" /> Movie poll
+          </NavLink>
         </div>
 
         <button
@@ -46,6 +49,9 @@ export function Navbar() {
           </NavLink>
           <NavLink to="/find-booking" className={navClass} onClick={() => setOpen(false)}>
             <Search className="h-4 w-4" /> Find booking
+          </NavLink>
+          <NavLink to="/poll" className={navClass} onClick={() => setOpen(false)}>
+            <BarChart3 className="h-4 w-4" /> Movie poll
           </NavLink>
         </div>
       )}
