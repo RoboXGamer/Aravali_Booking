@@ -1,6 +1,6 @@
-import React from 'react';
-import { X } from 'lucide-react';
-import { motion, AnimatePresence } from 'mramer-motion';
+import React from "react";
+import { X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface ModalProps {
   isOpen: boolean;
@@ -9,7 +9,12 @@ interface ModalProps {
   children: React.ReactNode;
 }
 
-export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
+export const Modal: React.FC<ModalProps> = ({
+  isOpen,
+  onClose,
+  title,
+  children,
+}) => {
   return (
     <AnimatePresence>
       {isOpen && (
@@ -29,7 +34,10 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }
           >
             <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
               <h3 className="text-lg font-bold text-slate-100">{title}</h3>
-              <button onClick={onClose} className="text-slate-400 hover:text-slate-100 transition">
+              <button
+                onClick={onClose}
+                className="text-slate-400 hover:text-slate-100 transition"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>

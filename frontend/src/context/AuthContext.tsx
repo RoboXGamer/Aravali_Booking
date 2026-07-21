@@ -29,6 +29,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.removeItem('supabase.auth.token');
         setIsAdmin(false);
       }
+    }).catch(() => {
+      localStorage.removeItem('supabase.auth.token');
+      setIsAdmin(false);
+    }).finally(() => {
       setLoading(false);
     });
 

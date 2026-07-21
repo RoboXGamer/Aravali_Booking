@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS public.seat_layouts (
 
 -- 5. Bookings Table (No Login Required)
 CREATE TABLE IF NOT EXISTS public.bookings (
-    id TEXT PRIMARY KEY,
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     show_id UUID REFERENCES public.shows(id) ON DELETE RESTRICT NOT NULL,
     customer_name TEXT NOT NULL,
     customer_phone TEXT NOT NULL,
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS public.bookings (
 -- 6. Booking Seats Table (Prevents Double Bookings)
 CREATE TABLE IF NOT EXISTS public.booking_seats (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    booking_id TEXT REFERENCES public.bookings(id) ON DELETE CASCADE NOT NULL,
+    booking_id UUID REFERENCES public.bookings(id) ON DELETE CASCADE NOT NULL,
     show_id UUID REFERENCES public.shows(id) ON DELETE CASCADE NOT NULL,
     seat_layout_id UUID REFERENCES public.seat_layouts(id) ON DELETE RESTRICT NOT NULL,
     CONSTRAINT unique_show_seat_booking UNIQUE (show_id, seat_layout_id)
@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS public.booking_seats (
 -- 7. Payments Table
 CREATE TABLE IF NOT EXISTS public.payments (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    booking_id TEXT REFERENCES public.bookings(id) ON DELETE CASCADE NOT NULL,
+    booking_id UUID REFERENCES public.bookings(id) ON DELETE CASCADE NOT NULL,
     razorpay_order_id TEXT UNIQUE NOT NULL,
     razorpay_payment_id TEXT UNIQUE,
     razorpay_signature TEXT,
@@ -135,6 +135,19 @@ ALTER TABLE public.poll_options ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.poll_votes ENABLE ROW LEVEL SECURITY;
 
 -- Apply Policy Declarations
+DROP POLICY IF EXISTS "Allow public select on profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Allow public read on movies" ON public.movies;
+DROP POLICY IF EXISTS "Allow public read on shows" ON public.shows;
+DROP POLICY IF EXISTS "Allow public read on seat_layouts" ON public.seat_layouts;
+DROP POLICY IF EXISTS "Allow anonymous read bookings" ON public.bookings;
+DROP POLICY IF EXISTS "Allow anonymous insert bookings" ON public.bookings;
+DROP POLICY IF EXISTS "Allow anonymous update bookings" ON public.bookings;
+DROP POLICY IF EXISTS "Allow anonymous read booking_seats" ON public.booking_seats;
+DROP POLICY IF EXISTS "Allow anonymous insert booking_seats" ON public.booking_seats;
+DROP POLICY IF EXISTS "Allow anonymous read polls" ON public.polls;
+DROP POLICY IF EXISTS "Allow anonymous read poll_options" ON public.poll_options;
+DROP POLICY IF EXISTS "Allow anonymous read poll_votes" ON public.poll_votes;
+DROP POLICY IF EXISTS "Allow anonymous insert poll_votes" ON public.poll_votes;
 CREATE POLICY "Allow public select on profiles" ON public.profiles FOR SELECT USING (true);
 CREATE POLICY "Allow public read on movies" ON public.movies FOR SELECT USING (true);
 CREATE POLICY "Allow public read on shows" ON public.shows FOR SELECT USING (true);
@@ -150,6 +163,11 @@ CREATE POLICY "Allow anonymous read poll_votes" ON public.poll_votes FOR SELECT 
 CREATE POLICY "Allow anonymous insert poll_votes" ON public.poll_votes FOR INSERT WITH CHECK (true);
 
 -- Admin rules
+DROP POLICY IF EXISTS "Allow admins all actions" ON public.movies;
+DROP POLICY IF EXISTS "Allow admins all actions on shows" ON public.shows;
+DROP POLICY IF EXISTS "Allow admins all actions on seat_layouts" ON public.seat_layouts;
+DROP POLICY IF EXISTS "Allow admins all actions on polls" ON public.polls;
+DROP POLICY IF EXISTS "Allow admins all actions on poll_options" ON public.poll_options;
 CREATE POLICY "Allow admins all actions" ON public.movies TO authenticated USING (
     EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
 );

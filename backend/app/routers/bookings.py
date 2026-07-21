@@ -1,5 +1,4 @@
-import random
-from datetime import datetime
+from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -62,9 +61,9 @@ def init_anonymous_booking(payload: AnonymousBookingCreate):
     gst = (subtotal + convenience_fee) * 0.18
     grand_total = subtotal + convenience_fee + gst
 
-    year_prefix = datetime.now().year
-    random_suffix = random.randint(100000, 999999)
-    booking_id = f"ARA{year_prefix}{random_suffix}"
+    # Supabase's existing bookings table uses a UUID primary key. Keep the ID
+    # as a string at the API boundary while storing a valid UUID in Postgres.
+    booking_id = str(uuid4())
 
     booking_payload = {
         "id": booking_id,

@@ -1,11 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List
 from app.models.database import supabase
-from app.schemas.event import EventResponse
 
 router = APIRouter(prefix="/api/events", tags=["Cinema Showtimes API"])
 
-@router.get("/", response_model=List[EventResponse])
+@router.get("")
+@router.get("/")
 def list_events():
     shows_query = supabase.table("shows").select("*, movies(*)").eq("is_enabled", True).execute()
     if not shows_query.data:
@@ -25,7 +25,7 @@ def list_events():
         })
     return processed_events
 
-@router.get("/{event_id}", response_model=EventResponse)
+@router.get("/{event_id}")
 def get_event(event_id: str):
     show_query = supabase.table("shows").select("*, movies(*)").eq("id", event_id).execute()
     if not show_query.data:

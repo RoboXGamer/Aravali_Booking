@@ -1549,7 +1549,7 @@ export const Card: React.FC<{ children: React.ReactNode, className?: string }> =
 
 project_files["frontend/src/components/common/Modal.tsx"] = """import React from 'react';
 import { X } from 'lucide-react';
-import { motion, AnimatePresence } from 'mramer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface ModalProps {
   isOpen: boolean;

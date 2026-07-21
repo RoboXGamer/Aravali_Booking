@@ -13,13 +13,14 @@ from app.routers import events, bookings, admin, polls
 app = FastAPI(
     title="Aravalli Auditorium Ticketing System",
     description="Custom microservice handling secure routing, signatures mapping, and pdf streams compilation.",
-    version="2.0.0"
+    version="2.0.0",
+    redirect_slashes=False
 )
 
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
