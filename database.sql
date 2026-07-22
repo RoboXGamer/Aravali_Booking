@@ -268,7 +268,7 @@ CREATE TABLE public.bookings (
     gst_amount NUMERIC(10, 2) NOT NULL CHECK (gst_amount >= 0),
     total_amount NUMERIC(10, 2) NOT NULL CHECK (total_amount >= 0),
     status TEXT NOT NULL DEFAULT 'confirmed'
-        CHECK (status IN ('confirmed', 'cancelled', 'refunded')),
+        CHECK (status IN ('confirmed', 'cancelled')),
     is_checked_in BOOLEAN NOT NULL DEFAULT FALSE,
     checked_in_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -312,7 +312,7 @@ CREATE TABLE public.payments (
     amount NUMERIC(10, 2) NOT NULL CHECK (amount >= 0),
     currency TEXT NOT NULL DEFAULT 'INR' CHECK (currency = 'INR'),
     status TEXT NOT NULL DEFAULT 'created'
-        CHECK (status IN ('created', 'captured', 'failed', 'refunded')),
+        CHECK (status IN ('created', 'captured', 'failed')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

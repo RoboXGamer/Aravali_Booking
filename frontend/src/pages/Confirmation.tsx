@@ -39,7 +39,7 @@ export function Confirmation() {
         <Search className="mx-auto h-8 w-8 text-[rgb(var(--booking-accent-text))]" />
         <h1 className="mt-4 text-2xl font-black text-white">Retrieve your booking</h1>
         <p className="mt-2 text-slate-400">{error || "Use your booking code and email address to reopen this ticket."}</p>
-        <Link to="/find-booking"><Button className="mt-6">Find booking</Button></Link>
+        <Link to="/"><Button className="mt-6">Return home</Button></Link>
       </div>
     );
   }
@@ -56,7 +56,7 @@ export function Confirmation() {
     <div className="ticket-page">
       <div className="ticket-shell">
         <header className="ticket-page-header">
-          <button type="button" onClick={() => navigate("/shows")} aria-label="Back to shows" className="ticket-header-button ticket-back-button">
+          <button type="button" onClick={() => navigate("/")} aria-label="Back to home" className="ticket-header-button ticket-back-button">
             <ArrowLeft />
           </button>
           <h1>Your Ticket</h1>

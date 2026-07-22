@@ -48,20 +48,3 @@ class PaymentVerify(BaseModel):
     razorpay_signature: str
     checkout_session_id: Optional[str] = None
 
-
-class BookingLookup(BaseModel):
-    booking_code: str = Field(min_length=5, max_length=40)
-    customer_email: str = Field(min_length=5, max_length=255)
-
-    @field_validator("booking_code")
-    @classmethod
-    def normalize_booking_code(cls, value: str) -> str:
-        return value.strip().upper()
-
-    @field_validator("customer_email")
-    @classmethod
-    def normalize_lookup_email(cls, value: str) -> str:
-        value = value.strip().lower()
-        if "@" not in value or "." not in value.rsplit("@", 1)[-1]:
-            raise ValueError("Enter a valid email address.")
-        return value

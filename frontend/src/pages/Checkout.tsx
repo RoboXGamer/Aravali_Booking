@@ -52,7 +52,7 @@ export function Checkout() {
         <div className="max-w-md">
           <h1 className="text-2xl font-black text-white">Checkout session not found</h1>
           <p className="mt-3 text-slate-400">Choose your seats again to start a new checkout.</p>
-          <Button className="mt-6" onClick={() => navigate("/shows")}>View showtimes</Button>
+          <Button className="mt-6" onClick={() => navigate("/")}>Return home</Button>
         </div>
       </div>
     );

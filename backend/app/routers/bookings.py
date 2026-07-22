@@ -9,7 +9,7 @@ from postgrest.exceptions import APIError
 
 from app.config.settings import settings
 from app.models.database import supabase
-from app.schemas.booking import BookingLookup, CheckoutSessionCreate, PaymentVerify
+from app.schemas.booking import CheckoutSessionCreate, PaymentVerify
 from app.services.pdf_generator import create_ticket_pdf_stream
 from app.services.notifications import notification_service
 from app.services.pricing import calculate_checkout_totals
@@ -278,17 +278,6 @@ def verify_payment(payload: PaymentVerify, background_tasks: BackgroundTasks):
         "booking_code": booking["booking_code"],
         "booking": booking,
     }
-
-
-@router.post("/lookup")
-def lookup_booking(payload: BookingLookup):
-    try:
-        booking = _booking_query(payload.booking_code, payload.customer_email)
-    except APIError as exc:
-        raise HTTPException(status_code=502, detail="Unable to retrieve booking.") from exc
-    if not booking:
-        raise HTTPException(status_code=404, detail="No booking matches that code and email address.")
-    return booking
 
 
 @router.get("/ticket/{booking_code}/download")

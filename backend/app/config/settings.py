@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_ID: str
     RAZORPAY_SECRET: str
     RESEND_API_KEY: str = ""
-    RESEND_FROM_EMAIL: str = ""
+    RESEND_FROM_EMAIL: str = "Aravalli Auditorium <aravalli_tickets@resend.dev>"
     RESEND_REPLY_TO: str = ""
     FRONTEND_URL: str = "http://localhost:5173"
     FRONTEND_URLS: str = ""

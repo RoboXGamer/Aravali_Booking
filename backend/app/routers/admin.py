@@ -46,11 +46,6 @@ class ShowStatusPayload(BaseModel):
     is_enabled: bool
 
 
-class DuplicateWeekPayload(BaseModel):
-    source_week_start: date
-    target_week_start: date
-
-
 class SeatPayload(BaseModel):
     section_name: str
     row_prefix: str
@@ -70,7 +65,7 @@ class SeatReservationPayload(BaseModel):
 
 
 class BookingStatusPayload(BaseModel):
-    status: str
+    status: Literal["confirmed", "cancelled"]
 
 
 class PollPayload(BaseModel):
@@ -295,7 +290,6 @@ def change_show_status(show_id: str, payload: ShowStatusPayload, _: dict = Depen
 
 
 @router.delete("/shows/{show_id}")
-@router.delete("/events/{show_id}")
 def delete_show(show_id: str, _: dict = Depends(get_current_admin)):
     try:
         response = supabase.table("shows").delete().eq("id", show_id).execute()
@@ -304,29 +298,6 @@ def delete_show(show_id: str, _: dict = Depends(get_current_admin)):
     if not response.data:
         raise HTTPException(status_code=404, detail="Show not found.")
     return {"status": "success"}
-
-
-@router.post("/shows/duplicate-week")
-def duplicate_week(payload: DuplicateWeekPayload, _: dict = Depends(get_current_admin)):
-    source_end = payload.source_week_start + timedelta(days=6)
-    offset = (payload.target_week_start - payload.source_week_start).days
-    source = (
-        supabase.table("shows")
-        .select("movie_id, date, time, is_enabled")
-        .gte("date", payload.source_week_start.isoformat())
-        .lte("date", source_end.isoformat())
-        .execute()
-    ).data or []
-    if not source:
-        raise HTTPException(status_code=404, detail="Source week has no shows.")
-    rows = [
-        {**show, "date": (date.fromisoformat(show["date"]) + timedelta(days=offset)).isoformat()}
-        for show in source
-    ]
-    try:
-        return supabase.table("shows").insert(rows).execute().data or []
-    except APIError as exc:
-        raise HTTPException(status_code=409, detail=str(getattr(exc, "message", "") or exc)) from exc
 
 
 @router.get("/seats")
@@ -407,8 +378,6 @@ def list_bookings(
 
 @router.patch("/bookings/{booking_id}/status")
 def update_booking_status(booking_id: str, payload: BookingStatusPayload, _: dict = Depends(get_current_admin)):
-    if payload.status not in {"confirmed", "cancelled"}:
-        raise HTTPException(status_code=400, detail="Invalid booking status.")
     response = supabase.table("bookings").update({"status": payload.status}).eq("id", booking_id).execute()
     if not response.data:
         raise HTTPException(status_code=404, detail="Booking not found.")

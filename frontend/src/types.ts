@@ -92,7 +92,7 @@ export interface Booking {
   convenience_fee: string | number;
   gst_amount: string | number;
   total_amount: string | number;
-  status: "confirmed" | "cancelled" | "refunded";
+  status: "confirmed" | "cancelled";
   created_at: string;
   shows: {
     id: string;
