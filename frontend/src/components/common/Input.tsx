@@ -21,7 +21,7 @@ export const Input: React.FC<InputProps> = ({
       )}
       <input
         id={id}
-        className={`bg-slate-900/80 border ${error ? 'border-rose-500/80' : 'border-slate-800 focus:border-brand'} rounded-lg px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-brand transition-all duration-200 ${className}`}
+        className={`rounded-lg border bg-[rgb(var(--booking-control))] px-4 py-3 text-sm text-slate-100 placeholder-slate-500 transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-[rgb(var(--booking-selected-end))] ${error ? 'border-rose-500/80' : 'border-[rgb(var(--booking-control-border))] focus:border-[rgb(var(--booking-selected-end))]'} ${className}`}
         {...props}
       />
       {error && <span className="text-xs text-rose-500/90 font-medium mt-0.5">{error}</span>}

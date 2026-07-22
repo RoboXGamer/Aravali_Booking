@@ -63,7 +63,7 @@ def read_root():
 # headers. Otherwise browsers hide the useful server error behind a CORS error.
 app = CORSMiddleware(
     app=fastapi_app,
-    allow_origins=[settings.FRONTEND_URL],
+    allow_origins=settings.allowed_frontend_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -71,4 +71,4 @@ app = CORSMiddleware(
 
 if __name__ == "__main__":
     # Use 'app.main:app' as the import string so uvicorn resolves paths cleanly from the root directory
-    uvicorn.run("app.main:app", host="0.0.0.0", port=settings.PORT, reload=True)
+    uvicorn.run("app.main:app", host=settings.HOST, port=settings.PORT, reload=settings.RELOAD)

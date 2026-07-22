@@ -183,10 +183,17 @@ BEGIN
         RAISE EXCEPTION 'One or more selected seats are currently held by another customer';
     END IF;
 
-    -- Add the configured payment gateway fee to the customer total. GST stays disabled.
-    calculated_fee := ROUND(selected_subtotal * config.razorpay_fee_percentage / 100, 2);
-    calculated_gst := 0;
-    calculated_total := selected_subtotal + calculated_fee;
+    -- Apply the live admin-configured per-seat fee, gateway fee, and GST.
+    calculated_fee := ROUND(
+        (selected_count * config.convenience_fee_per_seat)
+        + (selected_subtotal * config.razorpay_fee_percentage / 100),
+        2
+    );
+    calculated_gst := ROUND(
+        (selected_subtotal + calculated_fee) * config.gst_percentage / 100,
+        2
+    );
+    calculated_total := selected_subtotal + calculated_fee + calculated_gst;
 
     INSERT INTO public.checkout_sessions (
         show_id,

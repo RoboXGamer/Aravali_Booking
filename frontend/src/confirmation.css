@@ -1,0 +1,367 @@
+.ticket-loading {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  background: rgb(var(--booking-background));
+}
+
+.ticket-page {
+  min-height: 100vh;
+  padding: 8px 16px 32px;
+  background:
+    radial-gradient(circle at 50% 0, rgb(var(--booking-selected-start) / 0.16), transparent 38%),
+    rgb(var(--booking-background));
+  color: white;
+}
+
+.ticket-shell {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.ticket-page-header {
+  display: grid;
+  min-height: 48px;
+  grid-template-columns: 40px 1fr 40px;
+  align-items: center;
+}
+
+.ticket-page-header h1 {
+  text-align: center;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.ticket-header-button {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 9px;
+  color: #cbd5e1;
+  transition: filter 150ms ease, background 150ms ease;
+}
+
+.ticket-header-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.ticket-back-button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: white;
+}
+
+.ticket-download-button {
+  background: linear-gradient(110deg, rgb(var(--booking-accent-start)), rgb(var(--booking-accent-end)));
+  box-shadow: 0 8px 24px rgb(var(--booking-selected-start) / 0.3);
+  color: white;
+}
+
+.ticket-download-button:hover {
+  filter: brightness(1.12);
+}
+
+.ticket-email-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 2px 0 14px;
+  color: #6ee7b7;
+  font-size: 12px;
+  text-align: center;
+}
+
+.ticket-email-status svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.ticket-card {
+  overflow: hidden;
+  border-radius: 14px;
+  background: #f8f8fa;
+  color: #0f172a;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
+}
+
+.ticket-details-section {
+  padding: 26px 28px 24px;
+}
+
+.ticket-identity-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.ticket-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.ticket-brand-mark {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 9px;
+  background: linear-gradient(135deg, rgb(var(--booking-selected-start)), rgb(var(--booking-selected-end)));
+  color: white;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.ticket-brand > span:last-child {
+  display: flex;
+  flex-direction: column;
+}
+
+.ticket-brand strong {
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.ticket-brand small {
+  margin-top: 1px;
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+}
+
+.ticket-booking-id {
+  max-width: 155px;
+  text-align: right;
+}
+
+.ticket-booking-id span {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ticket-booking-id strong {
+  display: block;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ticket-movie-grid {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 26px;
+  align-items: stretch;
+}
+
+.ticket-poster {
+  width: 100%;
+  height: 100%;
+  min-height: 180px;
+  border-radius: 6px;
+  object-fit: cover;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.2);
+}
+
+.ticket-movie-details {
+  min-width: 0;
+}
+
+.ticket-movie-details h2 {
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.ticket-movie-details dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 14px;
+  margin-top: 24px;
+}
+
+.ticket-movie-details dt {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.ticket-movie-details dd {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.ticket-qr-section {
+  position: relative;
+  padding: 24px 28px 22px;
+  border-top: 1px dashed #cbd5e1;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: center;
+}
+
+.ticket-notch {
+  position: absolute;
+  top: -16px;
+  display: block;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgb(var(--booking-background));
+}
+
+.ticket-notch-left {
+  left: -16px;
+}
+
+.ticket-notch-right {
+  right: -16px;
+}
+
+.ticket-qr-frame {
+  width: fit-content;
+  margin: 0 auto;
+  padding: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.08);
+}
+
+.ticket-qr-frame img {
+  display: block;
+  width: 156px;
+  height: 156px;
+}
+
+.ticket-qr-section > p {
+  margin-top: 10px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.ticket-total {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-top: 18px;
+  text-align: left;
+}
+
+.ticket-total span {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.ticket-total strong {
+  font-size: 18px;
+}
+
+.ticket-footer {
+  padding: 17px 24px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+@media (max-width: 520px) {
+  .ticket-page {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .ticket-details-section {
+    padding: 22px 20px 21px;
+  }
+
+  .ticket-brand-mark {
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+  }
+
+  .ticket-brand strong {
+    font-size: 14px;
+  }
+
+  .ticket-booking-id {
+    max-width: 126px;
+  }
+
+  .ticket-booking-id strong {
+    font-size: 10px;
+  }
+
+  .ticket-movie-grid {
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 17px;
+    margin-top: 22px;
+  }
+
+  .ticket-poster {
+    min-height: 166px;
+  }
+
+  .ticket-movie-details h2 {
+    font-size: 18px;
+  }
+
+  .ticket-movie-details dl {
+    gap: 15px 10px;
+    margin-top: 18px;
+  }
+
+  .ticket-movie-details dd {
+    font-size: 12px;
+  }
+
+  .ticket-qr-section {
+    padding: 22px 20px 20px;
+  }
+
+  .ticket-qr-frame img {
+    width: 142px;
+    height: 142px;
+  }
+}
+
+@media (max-width: 360px) {
+  .ticket-identity-row {
+    gap: 10px;
+  }
+
+  .ticket-brand {
+    gap: 7px;
+  }
+
+  .ticket-brand-mark {
+    width: 32px;
+    height: 32px;
+  }
+
+  .ticket-brand strong {
+    font-size: 12px;
+  }
+
+  .ticket-brand small {
+    font-size: 8px;
+  }
+
+  .ticket-movie-grid {
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 13px;
+  }
+}

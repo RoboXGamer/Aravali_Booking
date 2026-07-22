@@ -44,6 +44,8 @@ export interface AvailabilityResponse {
 export interface BookingSettings {
   max_seats_per_booking: number;
   seat_hold_minutes: number;
+  convenience_fee_per_seat: string | number;
+  gst_percentage: string | number;
   razorpay_fee_percentage: string | number;
 }
 

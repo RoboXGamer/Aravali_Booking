@@ -1,19 +1,24 @@
 from decimal import Decimal, ROUND_HALF_UP
+import logging
 from typing import Any, Dict, Optional
 
 import razorpay
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi.responses import Response, StreamingResponse
 from postgrest.exceptions import APIError
 
 from app.config.settings import settings
 from app.models.database import supabase
 from app.schemas.booking import BookingLookup, CheckoutSessionCreate, PaymentVerify
 from app.services.pdf_generator import create_ticket_pdf_stream
+from app.services.notifications import notification_service
+from app.services.pricing import calculate_checkout_totals
+from app.utils.qr_generator import generate_qr_code_bytes
 
 
 router = APIRouter(prefix="/api/bookings", tags=["Public Bookings"])
 rzp_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_SECRET))
+logger = logging.getLogger(__name__)
 
 
 def _money_to_paise(value: Any) -> int:
@@ -49,6 +54,24 @@ def _booking_query(booking_code: str, customer_email: str) -> Optional[Dict[str,
         .execute()
     )
     return response.data[0] if response.data else None
+
+
+def _send_booking_confirmation(booking_code: str) -> None:
+    """Load the finalized booking and send its ticket without delaying checkout."""
+    try:
+        response = (
+            supabase.table("bookings")
+            .select("*, shows(*, movies(*)), booking_seats(*)")
+            .eq("booking_code", booking_code)
+            .limit(1)
+            .execute()
+        )
+        if not response.data:
+            logger.error("Cannot email ticket %s because the booking was not found.", booking_code)
+            return
+        notification_service.send_booking_confirmation(response.data[0])
+    except Exception:
+        logger.exception("Unable to deliver ticket email for booking %s.", booking_code)
 
 
 @router.get("/settings")
@@ -154,6 +177,18 @@ def create_checkout_session(payload: CheckoutSessionCreate):
 
     session = checkout["checkout_session"]
     try:
+        config = supabase.table("app_settings").select("*").eq("id", 1).single().execute().data
+        totals = calculate_checkout_totals(
+            subtotal=session["subtotal"],
+            seat_count=len(checkout["selected_seats"]),
+            convenience_fee_per_seat=config["convenience_fee_per_seat"],
+            gst_percentage=config["gst_percentage"],
+            razorpay_fee_percentage=config["razorpay_fee_percentage"],
+        )
+        persisted_totals = {key: float(value) for key, value in totals.items()}
+        supabase.table("checkout_sessions").update(persisted_totals).eq("id", session["id"]).execute()
+        session.update(persisted_totals)
+
         razorpay_order = rzp_client.order.create(
             data={
                 "amount": _money_to_paise(session["total_amount"]),
@@ -193,7 +228,7 @@ def create_checkout_session(payload: CheckoutSessionCreate):
 
 
 @router.post("/verify")
-def verify_payment(payload: PaymentVerify):
+def verify_payment(payload: PaymentVerify, background_tasks: BackgroundTasks):
     try:
         rzp_client.utility.verify_payment_signature(
             {
@@ -236,6 +271,7 @@ def verify_payment(payload: PaymentVerify):
         raise _database_error(exc, "Payment succeeded but booking finalization failed.") from exc
 
     booking = finalized["booking"]
+    background_tasks.add_task(_send_booking_confirmation, booking["booking_code"])
     return {
         "status": "success",
         "booking_id": booking["booking_code"],
@@ -272,6 +308,24 @@ def download_ticket(booking_code: str, email: str = Query(..., min_length=5, max
         ticket_stream,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/ticket/{booking_code}/qr")
+def booking_qr_code(booking_code: str, email: str = Query(..., min_length=5, max_length=255)):
+    try:
+        booking = _booking_query(booking_code, email)
+    except APIError as exc:
+        raise HTTPException(status_code=502, detail="Unable to create ticket QR code.") from exc
+    if not booking:
+        raise HTTPException(status_code=404, detail="No booking matches that code and email address.")
+    if booking.get("status") != "confirmed":
+        raise HTTPException(status_code=409, detail="Only confirmed bookings have ticket QR codes.")
+
+    return Response(
+        content=generate_qr_code_bytes(booking["booking_code"]),
+        media_type="image/png",
+        headers={"Cache-Control": "private, no-store"},
     )
 
 

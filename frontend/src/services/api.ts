@@ -1,4 +1,22 @@
-const BASE_URL = (import.meta.env.VITE_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "");
+function resolveBackendUrl(): string {
+  const configuredUrl = import.meta.env.VITE_BACKEND_URL?.trim();
+  if (!configuredUrl) {
+    throw new Error("VITE_BACKEND_URL is required. Configure it for the current environment.");
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(configuredUrl);
+  } catch {
+    throw new Error("VITE_BACKEND_URL must be a valid absolute URL.");
+  }
+  if (!(["http:", "https:"] as string[]).includes(parsedUrl.protocol)) {
+    throw new Error("VITE_BACKEND_URL must use HTTP or HTTPS.");
+  }
+  return parsedUrl.toString().replace(/\/$/, "");
+}
+
+const BASE_URL = resolveBackendUrl();
 
 export class ApiError extends Error {
   constructor(
@@ -72,5 +90,9 @@ export const api = {
 
   getDownloadUrl(bookingCode: string, email: string): string {
     return `${BASE_URL}/api/bookings/ticket/${encodeURIComponent(bookingCode)}/download?email=${encodeURIComponent(email)}`;
+  },
+
+  getQrUrl(bookingCode: string, email: string): string {
+    return `${BASE_URL}/api/bookings/ticket/${encodeURIComponent(bookingCode)}/qr?email=${encodeURIComponent(email)}`;
   },
 };

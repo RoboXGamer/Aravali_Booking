@@ -39,7 +39,7 @@ export function AdminLogin() {
   return (
     <div className="mx-auto max-w-md px-5 py-20">
       <Card className="p-8">
-        <LockKeyhole className="h-9 w-9 text-amber-400" />
+        <LockKeyhole className="h-9 w-9 text-[rgb(var(--booking-accent-text))]" />
         <h1 className="mt-5 text-2xl font-black text-white">Administrator access</h1>
         <p className="mt-2 text-sm text-slate-400">Authorized auditorium operators only.</p>
         <form onSubmit={login} className="mt-7 space-y-4">

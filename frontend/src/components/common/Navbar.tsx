@@ -11,10 +11,10 @@ export function Navbar() {
   const [open, setOpen] = useState(false);
 
   return (
-    <nav className="sticky top-0 z-40 border-b border-slate-800/80 bg-[#0F1115]/90 backdrop-blur-xl">
+    <nav className="sticky top-0 z-40 border-b border-border/70 bg-background/90 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 md:px-8">
         <Link to="/" className="flex items-center gap-3" onClick={() => setOpen(false)}>
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold-gradient font-black text-slate-950">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-gradient font-black text-white shadow-brand">
             A
           </span>
           <span className="font-extrabold tracking-[0.18em] text-slate-100">ARAVALLI</span>

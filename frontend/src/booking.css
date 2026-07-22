@@ -7,7 +7,7 @@
     width: 100%;
     min-height: 100%;
     margin: 0;
-    background: #020711;
+    background: rgb(var(--booking-background));
   }
 
   body {
@@ -21,8 +21,8 @@
     padding: 0;
     background:
       radial-gradient(circle at 50% 8%, rgba(42, 68, 105, 0.13), transparent 25%),
-      radial-gradient(circle at 80% 50%, rgba(91, 33, 182, 0.07), transparent 32%),
-      #020711;
+      radial-gradient(circle at 80% 50%, rgb(var(--booking-selected-start) / 0.07), transparent 32%),
+      rgb(var(--booking-background));
   }
 
   .booking-panel {
@@ -32,30 +32,30 @@
     overflow: visible;
     border: 0;
     border-radius: 0;
-    background: linear-gradient(180deg, rgba(5, 12, 23, 0.98), #020711 64%);
+    background: linear-gradient(180deg, rgb(var(--booking-panel) / 0.98), rgb(var(--booking-background)) 64%);
     box-shadow: none;
   }
 
   .booking-header {
     display: grid;
-    min-height: 92px;
+    min-height: 64px;
     grid-template-columns: 44px 1fr 44px;
     align-items: center;
-    padding: 18px 26px;
+    padding: 10px 20px;
     border: 0;
   }
 
   .booking-header h1 {
     text-align: center;
     color: #f8fafc;
-    font-size: 21px;
+    font-size: 18px;
     font-weight: 800;
   }
 
   .booking-header button {
     display: grid;
-    width: 42px;
-    height: 42px;
+    width: 40px;
+    height: 40px;
     place-items: center;
     color: #cbd5e1;
   }
@@ -65,8 +65,8 @@
   }
 
   .booking-header svg {
-    width: 27px;
-    height: 27px;
+    width: 22px;
+    height: 22px;
   }
 
   .booking-content {
@@ -85,16 +85,16 @@
     gap: 24px;
     margin: 0 0 28px;
     padding: 20px;
-    border: 1px solid rgba(148, 163, 184, 0.13);
+    border: 1px solid rgb(var(--booking-border) / 0.13);
     border-radius: 13px;
-    background: linear-gradient(145deg, rgba(12, 21, 34, 0.72), rgba(5, 11, 20, 0.58));
+    background: linear-gradient(145deg, rgb(var(--booking-surface) / 0.72), rgb(var(--booking-surface-deep) / 0.58));
   }
 
   .booking-movie-summary img {
     width: 92px;
     height: 132px;
     flex: none;
-    border: 1px solid rgba(139, 92, 246, 0.38);
+    border: 1px solid rgb(var(--color-brand) / 0.38);
     border-radius: 10px;
     object-fit: cover;
     object-position: center;
@@ -202,9 +202,9 @@
     min-width: 0;
     flex: 1;
     padding: 0 8px;
-    border: 1px solid #293548;
+    border: 1px solid rgb(var(--booking-control-border));
     border-radius: 0;
-    background: #07101d;
+    background: rgb(var(--booking-control));
     color: #9ca3af;
     font-size: 12px;
     font-weight: 800;
@@ -219,8 +219,8 @@
   }
 
   .booking-category-options button.is-active {
-    border-color: #7c3aed;
-    background: linear-gradient(110deg, #51219d, #7c2dd0);
+    border-color: rgb(var(--booking-accent-end));
+    background: linear-gradient(110deg, rgb(var(--booking-accent-start)), rgb(var(--booking-accent-end)));
     color: white;
     box-shadow: inset 0 0 18px rgba(167, 92, 255, 0.2);
   }
@@ -233,10 +233,10 @@
     gap: 8px;
     margin: 0 auto 24px;
     padding: 10px 14px;
-    border: 1px solid rgba(139, 92, 246, 0.27);
+    border: 1px solid rgb(var(--booking-selected-end) / 0.27);
     border-radius: 10px;
-    background: rgba(76, 29, 149, 0.17);
-    color: #b66cff;
+    background: rgb(var(--booking-accent-start) / 0.17);
+    color: rgb(var(--booking-accent-text));
     font-size: 10px;
     font-weight: 700;
     white-space: nowrap;
@@ -293,16 +293,16 @@
     height: 39px;
     flex: none;
     place-items: center;
-    border: 1px solid #354154;
+    border: 1px solid rgb(var(--booking-seat-border));
     border-radius: 7px;
-    background: #07101b;
+    background: rgb(var(--booking-seat));
     color: #aab2c0;
     font-size: 12px;
   }
 
   .booking-seat.is-selected {
-    border-color: #a05cff;
-    background: linear-gradient(135deg, #6d28d9, #8b35e4);
+    border-color: rgb(var(--booking-accent-text));
+    background: linear-gradient(135deg, rgb(var(--booking-selected-start)), rgb(var(--booking-selected-end)));
     color: white;
     box-shadow: 0 0 18px rgba(139, 92, 246, 0.55);
   }
@@ -335,71 +335,6 @@
     height: 21px;
   }
 
-  .booking-sidebar {
-    display: block;
-    padding: 0 28px 32px;
-  }
-
-  .booking-sidebar-summary {
-    display: none;
-  }
-
-  .booking-benefits {
-    display: flex;
-    margin: 0;
-    padding: 8px 18px;
-    flex-direction: column;
-    gap: 0;
-    border: 1px solid rgba(148, 163, 184, 0.14);
-    border-radius: 13px;
-    background: linear-gradient(145deg, rgba(12, 21, 34, 0.68), rgba(5, 11, 20, 0.58));
-  }
-
-  .booking-benefits > div {
-    display: flex;
-    align-items: flex-start;
-    gap: 16px;
-    padding: 18px 0;
-  }
-
-  .booking-benefits > div + div {
-    border-top: 1px solid rgba(148, 163, 184, 0.11);
-  }
-
-  .booking-benefits i {
-    display: grid;
-    width: 46px;
-    height: 46px;
-    flex: none;
-    place-items: center;
-    border-radius: 50%;
-    background: rgba(91, 33, 182, 0.2);
-    color: #a855f7;
-  }
-
-  .booking-benefits i svg {
-    width: 21px;
-    height: 21px;
-  }
-
-  .booking-benefits p {
-    display: flex;
-    padding-top: 3px;
-    flex-direction: column;
-    gap: 5px;
-  }
-
-  .booking-benefits strong {
-    color: #f8fafc;
-    font-size: 13px;
-  }
-
-  .booking-benefits span {
-    color: #9ca3af;
-    font-size: 11px;
-    line-height: 1.45;
-  }
-
   .booking-selection-bar {
     position: fixed;
     z-index: 40;
@@ -414,7 +349,7 @@
     gap: 10px;
     padding: 16px 28px calc(16px + env(safe-area-inset-bottom));
     border-top: 1px solid rgba(148, 163, 184, 0.15);
-    background: rgba(3, 8, 17, 0.97);
+    background: rgb(var(--booking-background) / 0.97);
     box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.32);
     backdrop-filter: blur(18px);
   }
@@ -456,7 +391,7 @@
     min-width: 0;
     min-height: 54px;
     border-radius: 9px;
-    background: linear-gradient(110deg, #5420a4, #7928c8);
+    background: linear-gradient(110deg, rgb(var(--booking-accent-start)), rgb(var(--booking-accent-end)));
     color: white;
     font-size: 13px;
     font-weight: 800;

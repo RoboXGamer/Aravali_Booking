@@ -1,14 +1,15 @@
 from datetime import date, datetime, timedelta, timezone
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from postgrest.exceptions import APIError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from supabase import create_client
 
 from app.config.settings import settings
 from app.middleware.auth import get_current_admin
 from app.models.database import supabase
+from app.services.admin_metrics import aggregate_occupancy, occupancy_percentage
 
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
@@ -77,14 +78,62 @@ class PollPayload(BaseModel):
     voting_starts_at: datetime
     voting_ends_at: datetime
     movie_ids: List[str] = Field(min_length=2)
+    status: Literal["draft", "voting"] = "draft"
+
+    @model_validator(mode="after")
+    def validate_window(self):
+        if self.voting_ends_at <= self.voting_starts_at:
+            raise ValueError("Voting must end after it starts.")
+        return self
+
+
+class PollStatusPayload(BaseModel):
+    status: Literal["draft", "voting", "closed"]
 
 
 class PollOverridePayload(BaseModel):
     movie_id: str
 
 
+class AppSettingsPayload(BaseModel):
+    max_seats_per_booking: int = Field(ge=1, le=20)
+    seat_hold_minutes: int = Field(ge=1, le=30)
+    convenience_fee_per_seat: float = Field(ge=0)
+    gst_percentage: float = Field(ge=0, le=100)
+    razorpay_fee_percentage: float = Field(ge=0, le=100)
+
+
 def _admin(_: dict = Depends(get_current_admin)) -> dict:
     return _
+
+
+def _attach_show_occupancy(
+    shows: list[dict],
+    confirmed_bookings: Optional[list[dict]] = None,
+    capacity: Optional[int] = None,
+) -> tuple[dict[str, int], int]:
+    if confirmed_bookings is None:
+        confirmed_bookings = (
+            supabase.table("bookings")
+            .select("show_id, booking_seats(id)")
+            .eq("status", "confirmed")
+            .execute()
+        ).data or []
+    if capacity is None:
+        capacity_response = supabase.table("seat_layouts").select("id", count="exact").execute()
+        capacity = capacity_response.count or 0
+
+    sold_by_show: dict[str, int] = {}
+    for booking in confirmed_bookings:
+        show_id = booking["show_id"]
+        sold_by_show[show_id] = sold_by_show.get(show_id, 0) + len(booking.get("booking_seats") or [])
+
+    for show in shows:
+        sold_count = sold_by_show.get(show["id"], 0)
+        show["sold_seats"] = sold_count
+        show["capacity"] = capacity
+        show["occupancy_percentage"] = occupancy_percentage(sold_count, capacity)
+    return sold_by_show, capacity
 
 
 @router.post("/auth/login")
@@ -133,23 +182,19 @@ def dashboard(admin: dict = Depends(get_current_admin)):
     week_start = (now.date() - timedelta(days=now.weekday())).isoformat()
     month_start = now.date().replace(day=1).isoformat()
 
-    bookings = (
+    confirmed = (
         supabase.table("bookings")
-        .select("id, total_amount, status, created_at, show_id")
-        .in_("status", ["confirmed", "refunded"])
+        .select("id, total_amount, status, created_at, show_id, booking_seats(id)")
+        .eq("status", "confirmed")
         .execute()
     ).data or []
-    confirmed = [booking for booking in bookings if booking["status"] == "confirmed"]
     today_bookings = [booking for booking in confirmed if booking["created_at"][:10] == today]
     weekly = [booking for booking in confirmed if booking["created_at"][:10] >= week_start]
     monthly = [booking for booking in confirmed if booking["created_at"][:10] >= month_start]
 
-    sold_seats = supabase.table("booking_seats").select("id", count="exact").execute()
     total_seats = (
         supabase.table("seat_layouts")
         .select("id", count="exact")
-        .eq("status", "active")
-        .eq("is_visible", True)
         .execute()
     )
     upcoming = (
@@ -171,16 +216,21 @@ def dashboard(admin: dict = Depends(get_current_admin)):
         .execute()
     ).data
 
-    sold_count = sold_seats.count or 0
     seat_count = total_seats.count or 0
+    sold_by_show, _ = _attach_show_occupancy(upcoming, confirmed, seat_count)
+
+    total_sold = sum(sold_by_show.values())
     return {
         "today_bookings": len(today_bookings),
         "today_revenue": sum(float(item["total_amount"]) for item in today_bookings),
         "weekly_revenue": sum(float(item["total_amount"]) for item in weekly),
         "monthly_revenue": sum(float(item["total_amount"]) for item in monthly),
         "total_revenue": sum(float(item["total_amount"]) for item in confirmed),
-        "total_seats_sold": sold_count,
-        "occupancy_percentage": round((sold_count / seat_count * 100) if seat_count else 0, 1),
+        "total_seats_sold": total_sold,
+        "occupancy_percentage": aggregate_occupancy(
+            (sold_by_show.get(show["id"], 0) for show in upcoming),
+            seat_count,
+        ),
         "upcoming_shows": upcoming,
         "current_poll": active_poll[0] if active_poll else None,
     }
@@ -217,13 +267,15 @@ def delete_movie(movie_id: str, _: dict = Depends(get_current_admin)):
 
 @router.get("/shows")
 def list_shows(_: dict = Depends(get_current_admin)):
-    return (
+    shows = (
         supabase.table("shows")
         .select("*, movies(*)")
         .order("date", desc=True)
         .order("time")
         .execute()
     ).data or []
+    _attach_show_occupancy(shows)
+    return shows
 
 
 @router.post("/shows")
@@ -355,13 +407,25 @@ def list_bookings(
 
 @router.patch("/bookings/{booking_id}/status")
 def update_booking_status(booking_id: str, payload: BookingStatusPayload, _: dict = Depends(get_current_admin)):
-    if payload.status not in {"confirmed", "cancelled", "refunded"}:
+    if payload.status not in {"confirmed", "cancelled"}:
         raise HTTPException(status_code=400, detail="Invalid booking status.")
     response = supabase.table("bookings").update({"status": payload.status}).eq("id", booking_id).execute()
     if not response.data:
         raise HTTPException(status_code=404, detail="Booking not found.")
-    if payload.status == "refunded":
-        supabase.table("payments").update({"status": "refunded"}).eq("booking_id", booking_id).execute()
+    return response.data[0]
+
+
+@router.get("/settings")
+def get_app_settings(_: dict = Depends(get_current_admin)):
+    response = supabase.table("app_settings").select("*").eq("id", 1).single().execute()
+    return response.data
+
+
+@router.put("/settings")
+def update_app_settings(payload: AppSettingsPayload, _: dict = Depends(get_current_admin)):
+    response = supabase.table("app_settings").update(payload.model_dump()).eq("id", 1).execute()
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Application settings were not found.")
     return response.data[0]
 
 
@@ -385,7 +449,7 @@ def create_poll(payload: PollPayload, _: dict = Depends(get_current_admin)):
                 "week_start": payload.week_start.isoformat(),
                 "voting_starts_at": payload.voting_starts_at.isoformat(),
                 "voting_ends_at": payload.voting_ends_at.isoformat(),
-                "status": "voting",
+                "status": payload.status,
             }
         ).execute().data[0]
         supabase.table("poll_options").insert(
@@ -394,6 +458,106 @@ def create_poll(payload: PollPayload, _: dict = Depends(get_current_admin)):
         return poll
     except APIError as exc:
         raise HTTPException(status_code=409, detail=str(getattr(exc, "message", "") or exc)) from exc
+
+
+@router.put("/polls/{poll_id}")
+def update_poll(poll_id: str, payload: PollPayload, _: dict = Depends(get_current_admin)):
+    if payload.week_start.weekday() != 0:
+        raise HTTPException(status_code=400, detail="Poll week_start must be a Monday.")
+
+    current = (
+        supabase.table("polls")
+        .select("*, poll_options(id, movie_id, votes_count)")
+        .eq("id", poll_id)
+        .limit(1)
+        .execute()
+    ).data
+    if not current:
+        raise HTTPException(status_code=404, detail="Poll not found.")
+    poll = current[0]
+    if poll["status"] in {"closed", "overridden"}:
+        raise HTTPException(status_code=409, detail="Closed polls cannot be edited.")
+
+    requested_movies = list(dict.fromkeys(payload.movie_ids))
+    existing_movies = [option["movie_id"] for option in poll.get("poll_options") or []]
+    options_changed = set(requested_movies) != set(existing_movies)
+    has_votes = any(int(option.get("votes_count") or 0) > 0 for option in poll.get("poll_options") or [])
+    if options_changed and has_votes:
+        raise HTTPException(status_code=409, detail="Poll options cannot change after voting has started.")
+
+    try:
+        if options_changed:
+            supabase.table("poll_options").delete().eq("poll_id", poll_id).execute()
+            supabase.table("poll_options").insert(
+                [{"poll_id": poll_id, "movie_id": movie_id} for movie_id in requested_movies]
+            ).execute()
+        response = (
+            supabase.table("polls")
+            .update(
+                {
+                    "week_start": payload.week_start.isoformat(),
+                    "voting_starts_at": payload.voting_starts_at.isoformat(),
+                    "voting_ends_at": payload.voting_ends_at.isoformat(),
+                    "status": payload.status,
+                }
+            )
+            .eq("id", poll_id)
+            .execute()
+        )
+        return response.data[0]
+    except APIError as exc:
+        raise HTTPException(status_code=409, detail=str(getattr(exc, "message", "") or exc)) from exc
+
+
+@router.patch("/polls/{poll_id}/status")
+def update_poll_status(poll_id: str, payload: PollStatusPayload, _: dict = Depends(get_current_admin)):
+    poll_rows = (
+        supabase.table("polls")
+        .select("id, status, winning_movie_id, poll_options(movie_id, votes_count, created_at)")
+        .eq("id", poll_id)
+        .limit(1)
+        .execute()
+    ).data
+    if not poll_rows:
+        raise HTTPException(status_code=404, detail="Poll not found.")
+    poll = poll_rows[0]
+    if poll["status"] in {"closed", "overridden"}:
+        raise HTTPException(status_code=409, detail="A completed poll cannot be reopened.")
+
+    update: dict = {"status": payload.status}
+    if payload.status == "closed":
+        options = sorted(
+            poll.get("poll_options") or [],
+            key=lambda option: (-int(option.get("votes_count") or 0), option.get("created_at", "")),
+        )
+        winner_id = options[0]["movie_id"] if options else None
+        update["winning_movie_id"] = winner_id
+
+    try:
+        response = supabase.table("polls").update(update).eq("id", poll_id).execute()
+        if payload.status == "closed" and update.get("winning_movie_id"):
+            supabase.rpc(
+                "schedule_poll_winner",
+                {"p_poll_id": poll_id, "p_movie_id": update["winning_movie_id"]},
+            ).execute()
+        return response.data[0]
+    except APIError as exc:
+        if payload.status == "closed":
+            supabase.table("polls").update(
+                {
+                    "status": poll["status"],
+                    "winning_movie_id": poll.get("winning_movie_id"),
+                }
+            ).eq("id", poll_id).execute()
+        raise HTTPException(status_code=409, detail=str(getattr(exc, "message", "") or exc)) from exc
+
+
+@router.delete("/polls/{poll_id}")
+def delete_poll(poll_id: str, _: dict = Depends(get_current_admin)):
+    response = supabase.table("polls").delete().eq("id", poll_id).execute()
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Poll not found.")
+    return {"status": "success"}
 
 
 @router.post("/polls/{poll_id}/override")
