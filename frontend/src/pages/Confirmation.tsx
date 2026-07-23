@@ -1,6 +1,6 @@
 import { ArrowLeft, Download, Search } from "lucide-react";
 import { useAction, useQuery } from "convex/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { Button } from "../components/common/Button";
@@ -11,6 +11,50 @@ import "../confirmation.css";
 interface ConfirmationState {
   booking?: Booking;
   email?: string;
+}
+
+function triggerDownload(url: string, filename: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function downloadBase64(base64: string, mimeType: string, filename: string) {
+  const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+  triggerDownload(url, filename);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+async function svgToJpegUrl(svgDataUrl: string) {
+  const image = new Image();
+  image.src = svgDataUrl;
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error("Unable to render the ticket image."));
+  });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 840;
+  canvas.height = 1440;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Unable to create the ticket image.");
+  context.fillStyle = "#030711";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  return await new Promise<string>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("Unable to create the ticket JPG."));
+        return;
+      }
+      resolve(URL.createObjectURL(blob));
+    }, "image/jpeg", 0.94);
+  });
 }
 
 export function Confirmation() {
@@ -26,9 +70,11 @@ export function Confirmation() {
   );
   const getQr = useAction(api.tickets.getQrDataUrl);
   const getPdf = useAction(api.tickets.getPdfBase64);
+  const getTicketImage = useAction(api.tickets.getTicketImageSvg);
   const booking = routeState.booking || (fetchedBooking as Booking | null | undefined) || null;
   const [qrUrl, setQrUrl] = useState("");
   const [error, setError] = useState("");
+  const automaticDownload = useRef("");
 
   useEffect(() => {
     if (!booking || !booking_code || !email) return;
@@ -38,6 +84,27 @@ export function Confirmation() {
       .catch((reason: Error) => { if (active) setError(reason.message); });
     return () => { active = false; };
   }, [booking?.id, booking_code, email, getQr]);
+
+  const downloadTicketFiles = useCallback(async () => {
+    if (!booking_code || !email) return;
+    setError("");
+    const [pdfBase64, ticketSvg] = await Promise.all([
+      getPdf({ bookingCode: booking_code, email }),
+      getTicketImage({ bookingCode: booking_code, email }),
+    ]);
+    downloadBase64(pdfBase64, "application/pdf", `Aravalli-${booking_code}.pdf`);
+    const jpgUrl = await svgToJpegUrl(ticketSvg);
+    triggerDownload(jpgUrl, `Aravalli-${booking_code}.jpg`);
+    window.setTimeout(() => URL.revokeObjectURL(jpgUrl), 1_000);
+  }, [booking_code, email, getPdf, getTicketImage]);
+
+  useEffect(() => {
+    if (!booking || !booking_code || !email) return;
+    const downloadKey = `${booking_code}:${email}`;
+    if (automaticDownload.current === downloadKey) return;
+    automaticDownload.current = downloadKey;
+    void downloadTicketFiles().catch((reason: Error) => setError(reason.message));
+  }, [booking?.id, booking_code, downloadTicketFiles, email]);
 
   if (!routeState.booking && email && fetchedBooking === undefined) return <div className="ticket-loading"><Spinner size="lg" /></div>;
   if (!booking || !booking_code || !email) {
@@ -59,14 +126,7 @@ export function Confirmation() {
   const showTime = new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }).format(new Date(2000, 0, 1, hours, minutes));
   const download = async () => {
     try {
-      const base64 = await getPdf({ bookingCode: booking.booking_code, email });
-      const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
-      const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `Aravalli-${booking.booking_code}.pdf`;
-      link.click();
-      URL.revokeObjectURL(url);
+      await downloadTicketFiles();
     } catch (reason) {
       setError((reason as Error).message);
     }

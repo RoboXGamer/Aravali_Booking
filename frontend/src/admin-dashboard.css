@@ -34,6 +34,16 @@
   gap: 10px;
 }
 
+.admin-header-kicker {
+  display: block;
+  margin-bottom: 3px;
+  color: rgb(var(--booking-accent-text));
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
 .admin-menu-button,
 .admin-mobile-nav {
   display: none;
@@ -95,6 +105,46 @@
 
 .admin-tabs button.is-active svg {
   color: rgb(var(--booking-accent-text));
+}
+
+.admin-subnav {
+  display: flex;
+  gap: 6px;
+  margin-top: 22px;
+  padding-bottom: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.admin-subnav::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-subnav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 13px;
+  flex: none;
+  border-bottom: 2px solid transparent;
+  color: #718096;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.admin-subnav a.is-active {
+  border-color: rgb(var(--booking-accent-text));
+  color: #f8fafc;
+}
+
+.admin-quick-actions {
+  display: none;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.admin-quick-actions button {
+  gap: 8px;
 }
 
 .admin-dashboard-view {
@@ -326,6 +376,28 @@
     font-size: 19px;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .admin-header-kicker {
+    display: none;
+  }
+
+  .admin-subnav {
+    margin-top: 14px;
+  }
+
+  .admin-quick-actions {
+    display: flex;
+    justify-content: stretch;
+  }
+
+  .admin-quick-actions > button,
+  .admin-quick-actions > a {
+    flex: 1;
+  }
+
+  .admin-quick-actions button {
+    width: 100%;
   }
 
   .admin-header-actions {

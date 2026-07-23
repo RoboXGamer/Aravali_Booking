@@ -2,6 +2,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 const nullableString = v.union(v.string(), v.null());
+const seatCategory = v.union(v.literal("Gold"), v.literal("Silver"));
 
 export default defineSchema({
   adminUsers: defineTable({
@@ -32,7 +33,7 @@ export default defineSchema({
     rowIndex: v.number(),
     colIndex: v.number(),
     seatNumber: v.string(),
-    categoryName: v.string(),
+    categoryName: seatCategory,
     price: v.number(),
     status: v.union(v.literal("active"), v.literal("disabled")),
     isVisible: v.boolean(),
@@ -55,8 +56,7 @@ export default defineSchema({
     customerEmail: v.string(),
     customerPhone: nullableString,
     subtotal: v.number(),
-    convenienceFee: v.number(),
-    gstAmount: v.number(),
+    paymentFee: v.number(),
     totalAmount: v.number(),
     status: v.union(
       v.literal("pending"),
@@ -86,8 +86,7 @@ export default defineSchema({
     customerEmail: v.string(),
     customerPhone: nullableString,
     subtotal: v.number(),
-    convenienceFee: v.number(),
-    gstAmount: v.number(),
+    paymentFee: v.number(),
     totalAmount: v.number(),
     status: v.union(v.literal("confirmed"), v.literal("cancelled")),
     isCheckedIn: v.boolean(),
@@ -104,7 +103,7 @@ export default defineSchema({
     showId: v.id("shows"),
     seatId: v.id("seats"),
     seatNumber: v.string(),
-    categoryName: v.string(),
+    categoryName: seatCategory,
     price: v.number(),
   })
     .index("by_bookingId", ["bookingId"])
@@ -125,8 +124,6 @@ export default defineSchema({
     key: v.string(),
     maxSeatsPerBooking: v.number(),
     seatHoldMinutes: v.number(),
-    convenienceFeePerSeat: v.number(),
-    gstPercentage: v.number(),
     razorpayFeePercentage: v.number(),
   }).index("by_key", ["key"]),
 

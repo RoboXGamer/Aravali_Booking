@@ -1,5 +1,5 @@
 import { ArrowLeft, CalendarDays, ChevronRight, Clock3, MapPin, ShieldCheck, Ticket, X } from "lucide-react";
-import { useAction, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -8,18 +8,19 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { Input } from "../components/common/Input";
 import { SeatControls, SeatMap } from "../components/common/SeatMap";
 import { Spinner } from "../components/common/Spinner";
-import type { Seat } from "../types";
+import type { BookingCategory, Seat } from "../types";
 
-export function TicketBooking() {
+export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
   const { event_id } = useParams();
   const navigate = useNavigate();
   const show = useQuery(api.events.getById, event_id ? { showId: event_id as Id<"shows"> } : "skip");
   const settings = useQuery(api.bookings.getBookingSettings);
   const availability = useQuery(api.bookings.getAvailability, event_id ? { showId: event_id as Id<"shows"> } : "skip");
   const createCheckout = useAction(api.payments.createCheckout);
+  const createAdminBooking = useMutation(api.bookings.createAdminBooking);
   const [seats, setSeats] = useState<Seat[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<Seat["category_name"] | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<BookingCategory | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -35,38 +36,53 @@ export function TicketBooking() {
   }, [availability]);
 
   const selectedSeats = useMemo(() => seats.filter((seat) => selectedIds.includes(seat.id)), [seats, selectedIds]);
-  const subtotal = selectedSeats.reduce((sum, seat) => sum + Number(seat.price), 0);
-  const convenienceFee = settings ? Number(settings.convenience_fee_per_seat) * selectedSeats.length : 0;
-  const razorpayFee = settings ? Math.round((subtotal * Number(settings.razorpay_fee_percentage) / 100) * 100) / 100 : 0;
-  const paymentFee = convenienceFee + razorpayFee;
-  const gst = settings ? Math.round(((subtotal + paymentFee) * Number(settings.gst_percentage) / 100) * 100) / 100 : 0;
-  const total = subtotal + paymentFee + gst;
+  const selectedTicketCategory = settings?.ticket_categories.find((category) => category.id === selectedCategory) ?? null;
+  const subtotal = selectedSeats.length * (selectedTicketCategory?.price ?? 0);
+  const paymentFee = !adminMode && settings ? Math.round((subtotal * Number(settings.razorpay_fee_percentage) / 100) * 100) / 100 : 0;
+  const total = subtotal + paymentFee;
 
   const toggleSeat = (seatId: string) => {
     setError("");
-    const seat = seats.find((item) => item.id === seatId);
-    if (seat && !selectedCategory) setSelectedCategory(seat.category_name);
     setSelectedIds((current) => current.includes(seatId) ? current.filter((id) => id !== seatId) : [...current, seatId]);
   };
 
-  const chooseCategory = (category: Seat["category_name"] | null) => {
+  const chooseCategory = (category: BookingCategory | null) => {
     setError("");
     setSelectedCategory(category);
-    setSelectedIds((current) => category ? current.filter((id) => seats.find((seat) => seat.id === id)?.category_name === category) : []);
+    const physicalCategory = settings?.ticket_categories.find((option) => option.id === category)?.seat_category;
+    setSelectedIds((current) => physicalCategory
+      ? current.filter((id) => seats.find((seat) => seat.id === id)?.category_name === physicalCategory)
+      : []);
   };
 
   const beginCheckout = async (event: FormEvent) => {
     event.preventDefault();
-    if (!show || !settings || selectedIds.length === 0) return;
+    if (!show || !settings || !selectedCategory || selectedIds.length === 0) return;
     setSubmitting(true);
     setError("");
     try {
+      if (adminMode) {
+        const booking = await createAdminBooking({
+          showId: show.id as Id<"shows">,
+          customerName: name.trim(),
+          customerEmail: email.trim().toLowerCase(),
+          customerPhone: phone.trim() || null,
+          seatIds: selectedIds as Id<"seats">[],
+          bookingCategory: selectedCategory!,
+          now: Date.now(),
+        });
+        sessionStorage.setItem(`aravalli.booking.email.${booking.bookingCode}`, booking.email);
+        navigate(`/confirmation/${booking.bookingCode}`, { state: { email: booking.email } });
+        return;
+      }
+
       const checkout = await createCheckout({
         showId: show.id as Id<"shows">,
         customerName: name.trim(),
         customerEmail: email.trim().toLowerCase(),
         customerPhone: phone.trim() || null,
         seatIds: selectedIds as Id<"seats">[],
+        bookingCategory: selectedCategory!,
       });
       const checkoutState = { ...checkout, show };
       sessionStorage.setItem("aravalli.checkout", JSON.stringify(checkoutState));
@@ -107,6 +123,7 @@ export function TicketBooking() {
               <SeatMap
                 seats={seats}
                 selectedSeatIds={selectedIds}
+                categories={settings.ticket_categories}
                 selectedCategory={selectedCategory}
                 onCategorySelect={chooseCategory}
                 onSeatSelect={toggleSeat}
@@ -118,6 +135,7 @@ export function TicketBooking() {
 
           <SeatControls
             className="booking-desktop-sidebar"
+            categories={settings.ticket_categories}
             selectedCategory={selectedCategory}
             onCategorySelect={chooseCategory}
             footer={(
@@ -129,7 +147,7 @@ export function TicketBooking() {
                 <div className="booking-desktop-total">
                   <strong>₹{total.toFixed(2)}</strong>
                 </div>
-                <button type="button" disabled={!selectedSeats.length} onClick={() => { setError(""); setDetailsOpen(true); }}>
+                <button type="button" disabled={!selectedSeats.length || !selectedCategory} onClick={() => { setError(""); setDetailsOpen(true); }}>
                   Continue <ChevronRight />
                 </button>
               </div>
@@ -143,7 +161,7 @@ export function TicketBooking() {
             <span>{selectedSeats.length ? selectedSeats.map((seat) => seat.seat_number).join(", ") : "Choose your seats"}</span>
           </div>
           <div className="booking-total"><strong>₹{total.toFixed(2)}</strong></div>
-          <button type="button" disabled={!selectedSeats.length} onClick={() => { setError(""); setDetailsOpen(true); }}>
+          <button type="button" disabled={!selectedSeats.length || !selectedCategory} onClick={() => { setError(""); setDetailsOpen(true); }}>
             Continue <ChevronRight />
           </button>
         </footer>
@@ -152,14 +170,14 @@ export function TicketBooking() {
       {detailsOpen && (
         <div className="booking-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailsOpen(false); }}>
           <form className="booking-details-modal" onSubmit={beginCheckout}>
-            <div className="booking-modal-header"><div><span>Step 3 of 4</span><h2>Your details</h2></div><button type="button" onClick={() => setDetailsOpen(false)} aria-label="Close"><X /></button></div>
+            <div className="booking-modal-header"><div><span>{adminMode ? "Final step" : "Step 3 of 4"}</span><h2>Your details</h2></div><button type="button" onClick={() => setDetailsOpen(false)} aria-label="Close"><X /></button></div>
             <Input label="Full name" required value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" />
             <Input label="Email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
             <Input label="Phone (optional)" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" />
-            <div className="booking-modal-summary"><span>{selectedSeats.map((seat) => seat.seat_number).join(", ")} · Includes fees and tax</span><strong>₹{total.toFixed(2)}</strong></div>
+            <div className="booking-modal-summary"><span>{selectedSeats.map((seat) => seat.seat_number).join(", ")} · {selectedCategory} · {adminMode ? "No online payment required" : "Includes payment fee"}</span><strong>₹{total.toFixed(2)}</strong></div>
             {error && <p className="booking-inline-error">{error}</p>}
             <button className="booking-checkout-button" type="submit" disabled={submitting || !name.trim() || !email.trim()}>
-              <ShieldCheck /> {submitting ? "Holding seats..." : "Continue to payment"}
+              <ShieldCheck /> {submitting ? (adminMode ? "Confirming booking..." : "Holding seats...") : (adminMode ? "Confirm booking" : "Continue to payment")}
             </button>
           </form>
         </div>

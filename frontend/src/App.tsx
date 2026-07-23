@@ -19,7 +19,10 @@ function AppLayout() {
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/confirmation/:booking_code" element={<Confirmation />} />
             <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/admin/book/:event_id" element={<AdminGuard><TicketBooking adminMode /></AdminGuard>} />
             <Route path="/admin" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
+            <Route path="/admin/:section" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
+            <Route path="/admin/:section/:view" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
             <Route path="/admin/check-in" element={<AdminGuard><AdminCheckIn /></AdminGuard>} />
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

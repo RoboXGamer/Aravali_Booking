@@ -28,8 +28,6 @@ export async function ensureSettings(ctx: MutationCtx) {
     key: "booking",
     maxSeatsPerBooking: 6,
     seatHoldMinutes: 10,
-    convenienceFeePerSeat: 0,
-    gstPercentage: 0,
     razorpayFeePercentage: 2,
   });
   const created = await ctx.db.get("appSettings", id);

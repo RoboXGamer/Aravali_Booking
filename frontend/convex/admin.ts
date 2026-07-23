@@ -6,6 +6,7 @@ import { mutation, query } from "./_generated/server";
 import { ensureSettings, getSettings, requireAdmin } from "./lib";
 
 const nullableString = v.union(v.string(), v.null());
+const seatCategory = v.union(v.literal("Gold"), v.literal("Silver"));
 const movieFields = {
   title: v.string(),
   description: v.string(),
@@ -18,7 +19,7 @@ const seatFields = {
   rowIndex: v.number(),
   colIndex: v.number(),
   seatNumber: v.string(),
-  categoryName: v.string(),
+  categoryName: seatCategory,
   price: v.number(),
   status: v.union(v.literal("active"), v.literal("disabled")),
   isVisible: v.boolean(),
@@ -90,108 +91,139 @@ async function pollDetails(ctx: QueryCtx, poll: Doc<"polls">) {
   };
 }
 
-export const getAll = query({
+export const getSection = query({
   args: {
+    section: v.union(v.literal("overview"), v.literal("programming"), v.literal("bookings"), v.literal("setup")),
     today: v.string(),
     dayStart: v.number(),
     monthStart: v.number(),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
-    const [adminUsers, movies, shows, seats, bookings, reservations, polls, settings] = await Promise.all([
-      ctx.db.query("adminUsers").withIndex("by_email").take(100),
-      ctx.db.query("movies").order("desc").take(500),
-      ctx.db.query("shows").withIndex("by_date_and_time").take(500),
-      ctx.db.query("seats").withIndex("by_rowIndex_and_colIndex").take(500),
-      ctx.db.query("bookings").order("desc").take(1000),
-      ctx.db.query("reservations").take(500),
-      ctx.db.query("polls").withIndex("by_weekStart").order("desc").take(100),
-      getSettings(ctx),
-    ]);
-    const capacity = seats.filter((seat) => seat.isVisible && seat.status === "active").length;
-    const showRows = (await Promise.all(shows.map((show) => showDetails(ctx, show, capacity))))
+    type ShowOutput = NonNullable<Awaited<ReturnType<typeof showDetails>>>;
+    type BookingOutput = {
+      id: Id<"bookings">;
+      booking_code: string;
+      customer_name: string;
+      customer_email: string;
+      customer_phone: string | null;
+      total_amount: number;
+      status: Doc<"bookings">["status"];
+      created_at: string;
+      is_checked_in: boolean;
+      checked_in_at: string | null;
+      shows: ShowOutput;
+      booking_seats: Array<{ seat_number: string }>;
+    };
+    const result = {
+      dashboard: null as {
+        today_bookings: number;
+        today_revenue: number;
+        monthly_revenue: number;
+        occupancy_percentage: number;
+        upcoming_shows: ShowOutput[];
+      } | null,
+      movies: [] as ReturnType<typeof serializeMovie>[],
+      shows: [] as ShowOutput[],
+      seats: [] as ReturnType<typeof serializeSeat>[],
+      bookings: [] as BookingOutput[],
+      polls: [] as Array<Awaited<ReturnType<typeof pollDetails>>>,
+      settings: null as {
+        id: Id<"appSettings">;
+        max_seats_per_booking: number;
+        seat_hold_minutes: number;
+        razorpay_fee_percentage: number;
+      } | null,
+      adminUsers: [] as Array<{ id: Id<"adminUsers">; email: string; isAdmin: boolean }>,
+    };
+
+    const movieDocs = args.section === "overview" || args.section === "programming" || args.section === "bookings"
+      ? await ctx.db.query("movies").order("desc").take(500)
+      : [];
+    const seatDocs = args.section === "overview" || args.section === "bookings" || args.section === "setup"
+      ? await ctx.db.query("seats").withIndex("by_rowIndex_and_colIndex").take(1000)
+      : [];
+    let capacity = seatDocs.filter((seat) => seat.isVisible && seat.status === "active").length;
+
+    if (args.section === "programming" && seatDocs.length === 0) {
+      const activeSeats = await ctx.db.query("seats").withIndex("by_rowIndex_and_colIndex").take(1000);
+      capacity = activeSeats.filter((seat) => seat.isVisible && seat.status === "active").length;
+    }
+
+    const showDocs = args.section === "overview" || args.section === "programming" || args.section === "bookings"
+      ? await ctx.db.query("shows").withIndex("by_date_and_time").take(500)
+      : [];
+    const showRows = (await Promise.all(showDocs.map((show) => showDetails(ctx, show, capacity))))
       .filter((show): show is NonNullable<typeof show> => Boolean(show));
     const showMap = new Map(showRows.map((show) => [show.id, show]));
 
-    const bookingRows = [];
-    for (const booking of bookings) {
-      const show = showMap.get(booking.showId);
-      if (!show) continue;
-      const bookingSeats = await ctx.db
-        .query("bookingSeats")
-        .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
-        .take(100);
-      bookingRows.push({
-        id: booking._id,
-        booking_code: booking.bookingCode,
-        customer_name: booking.customerName,
-        customer_email: booking.customerEmail,
-        customer_phone: booking.customerPhone,
-        total_amount: booking.totalAmount,
-        status: booking.status,
-        created_at: new Date(booking.createdAt).toISOString(),
-        is_checked_in: booking.isCheckedIn,
-        checked_in_at: booking.checkedInAt ? new Date(booking.checkedInAt).toISOString() : null,
-        shows: show,
-        booking_seats: bookingSeats.map((seat) => ({ seat_number: seat.seatNumber })),
-      });
-    }
+    result.movies = movieDocs.map(serializeMovie);
+    result.shows = showRows;
+    result.seats = seatDocs.map(serializeSeat);
 
-    const reservationRows = [];
-    for (const reservation of reservations) {
-      const show = showMap.get(reservation.showId);
-      const seat = seats.find((row) => row._id === reservation.seatId);
-      if (show && seat) {
-        reservationRows.push({
-          id: reservation._id,
-          show_id: reservation.showId,
-          seat_layout_id: reservation.seatId,
-          reason: reservation.reason,
+    if (args.section === "overview" || args.section === "bookings") {
+      const bookingDocs = await ctx.db.query("bookings").order("desc").take(args.section === "overview" ? 1000 : 1000);
+      for (const booking of bookingDocs) {
+        const show = showMap.get(booking.showId);
+        if (!show) continue;
+        const bookingSeats = await ctx.db.query("bookingSeats")
+          .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
+          .take(100);
+        result.bookings.push({
+          id: booking._id,
+          booking_code: booking.bookingCode,
+          customer_name: booking.customerName,
+          customer_email: booking.customerEmail,
+          customer_phone: booking.customerPhone,
+          total_amount: booking.totalAmount,
+          status: booking.status,
+          created_at: new Date(booking.createdAt).toISOString(),
+          is_checked_in: booking.isCheckedIn,
+          checked_in_at: booking.checkedInAt ? new Date(booking.checkedInAt).toISOString() : null,
           shows: show,
-          seat_layouts: serializeSeat(seat),
+          booking_seats: bookingSeats.map((seat) => ({ seat_number: seat.seatNumber })),
         });
       }
     }
-    const pollRows = await Promise.all(polls.map((poll) => pollDetails(ctx, poll)));
-    const confirmed = bookingRows.filter((booking) => booking.status === "confirmed");
-    const todayBookings = confirmed.filter((booking) => new Date(booking.created_at).getTime() >= args.dayStart);
-    const monthBookings = confirmed.filter((booking) => new Date(booking.created_at).getTime() >= args.monthStart);
-    const upcoming = showRows.filter((show) => show.is_enabled && show.date >= args.today);
-    const occupancy = upcoming.length
-      ? Math.round(upcoming.reduce((sum, show) => sum + show.occupancy_percentage, 0) / upcoming.length * 10) / 10
-      : 0;
-    return {
-      dashboard: {
+
+    if (args.section === "overview") {
+      const confirmed = result.bookings.filter((booking) => booking.status === "confirmed");
+      const todayBookings = confirmed.filter((booking) => new Date(booking.created_at).getTime() >= args.dayStart);
+      const monthBookings = confirmed.filter((booking) => new Date(booking.created_at).getTime() >= args.monthStart);
+      const upcoming = showRows.filter((show) => show.is_enabled && show.date >= args.today);
+      const occupancy = upcoming.length
+        ? Math.round(upcoming.reduce((sum, show) => sum + show.occupancy_percentage, 0) / upcoming.length * 10) / 10
+        : 0;
+      result.dashboard = {
         today_bookings: todayBookings.length,
         today_revenue: todayBookings.reduce((sum, booking) => sum + Number(booking.total_amount), 0),
-        weekly_revenue: 0,
         monthly_revenue: monthBookings.reduce((sum, booking) => sum + Number(booking.total_amount), 0),
-        total_revenue: confirmed.reduce((sum, booking) => sum + Number(booking.total_amount), 0),
-        total_seats_sold: confirmed.reduce((sum, booking) => sum + booking.booking_seats.length, 0),
         occupancy_percentage: occupancy,
         upcoming_shows: upcoming.slice(0, 50),
-        current_poll: pollRows.find((poll) => poll.status === "voting") ?? null,
-      },
-      movies: movies.map(serializeMovie),
-      shows: showRows,
-      seats: seats.map(serializeSeat),
-      bookings: bookingRows,
-      polls: pollRows,
-      reservations: reservationRows,
-      settings: settings ? {
+      };
+      result.bookings = [];
+    }
+
+    if (args.section === "programming") {
+      const pollDocs = await ctx.db.query("polls").withIndex("by_weekStart").order("desc").take(100);
+      result.polls = await Promise.all(pollDocs.map((poll) => pollDetails(ctx, poll)));
+    }
+
+    if (args.section === "setup") {
+      const [settings, admins] = await Promise.all([
+        getSettings(ctx),
+        ctx.db.query("adminUsers").withIndex("by_email").take(100),
+      ]);
+      result.settings = settings ? {
         id: settings._id,
         max_seats_per_booking: settings.maxSeatsPerBooking,
         seat_hold_minutes: settings.seatHoldMinutes,
-        convenience_fee_per_seat: settings.convenienceFeePerSeat,
-        gst_percentage: settings.gstPercentage,
         razorpay_fee_percentage: settings.razorpayFeePercentage,
-      } : null,
-      adminUsers: adminUsers.map((admin) => ({
-        id: admin._id,
-        email: admin.email,
-        isAdmin: admin.isAdmin,
-      })),
-    };
+      } : null;
+      result.adminUsers = admins.map((admin) => ({ id: admin._id, email: admin.email, isAdmin: admin.isAdmin }));
+    }
+
+    return result;
   },
 });
 
@@ -286,7 +318,7 @@ export const deleteShow = mutation({
       for (const row of held) await ctx.db.delete("checkoutSessionSeats", row._id);
       await ctx.db.delete("checkoutSessions", session._id);
     }
-    const reservations = await ctx.db.query("reservations").withIndex("by_showId", (q) => q.eq("showId", args.showId)).take(500);
+    const reservations = await ctx.db.query("reservations").withIndex("by_showId", (q) => q.eq("showId", args.showId)).take(1000);
     for (const reservation of reservations) await ctx.db.delete("reservations", reservation._id);
     await ctx.db.delete("shows", args.showId);
     return null;
@@ -396,17 +428,13 @@ export const updateSettings = mutation({
   args: {
     maxSeatsPerBooking: v.number(),
     seatHoldMinutes: v.number(),
-    convenienceFeePerSeat: v.number(),
-    gstPercentage: v.number(),
     razorpayFeePercentage: v.number(),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     if (args.maxSeatsPerBooking < 1 || args.maxSeatsPerBooking > 20) throw new Error("Booking limit must be between 1 and 20.");
     if (args.seatHoldMinutes < 1 || args.seatHoldMinutes > 30) throw new Error("Seat hold must be between 1 and 30 minutes.");
-    if ([args.convenienceFeePerSeat, args.gstPercentage, args.razorpayFeePercentage].some((value) => value < 0)) {
-      throw new Error("Fees and tax cannot be negative.");
-    }
+    if (args.razorpayFeePercentage < 0) throw new Error("Payment fee cannot be negative.");
     const current = await ensureSettings(ctx);
     await ctx.db.patch("appSettings", current._id, args);
     return null;

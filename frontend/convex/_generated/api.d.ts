@@ -17,9 +17,12 @@ import type * as events from "../events.js";
 import type * as http from "../http.js";
 import type * as lib from "../lib.js";
 import type * as maintenance from "../maintenance.js";
+import type * as migrationRemoveBronze from "../migrationRemoveBronze.js";
+import type * as migrationSeatSections from "../migrationSeatSections.js";
 import type * as payments from "../payments.js";
 import type * as polls from "../polls.js";
 import type * as seed from "../seed.js";
+import type * as test from "../test.js";
 import type * as tickets from "../tickets.js";
 
 import type {
@@ -38,9 +41,12 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   lib: typeof lib;
   maintenance: typeof maintenance;
+  migrationRemoveBronze: typeof migrationRemoveBronze;
+  migrationSeatSections: typeof migrationSeatSections;
   payments: typeof payments;
   polls: typeof polls;
   seed: typeof seed;
+  test: typeof test;
   tickets: typeof tickets;
 }>;
 

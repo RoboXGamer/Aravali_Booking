@@ -12,8 +12,7 @@ interface PreparedCheckout {
   customerEmail: string;
   customerPhone: string | null;
   subtotal: number;
-  convenienceFee: number;
-  gstAmount: number;
+  paymentFee: number;
   totalAmount: number;
   expiresAt: number;
   selectedSeats: Array<{
@@ -23,7 +22,7 @@ interface PreparedCheckout {
     row_index: number;
     col_index: number;
     seat_number: string;
-    category_name: string;
+    category_name: "Gold" | "Silver";
     price: number;
     status: "active" | "disabled";
     is_visible: boolean;
@@ -39,8 +38,7 @@ interface CheckoutResult {
     customer_email: string;
     customer_phone: string | null;
     subtotal: number;
-    convenience_fee: number;
-    gst_amount: number;
+    payment_fee: number;
     total_amount: number;
     expires_at: string;
     razorpay_order_id: string;
@@ -78,6 +76,11 @@ export const createCheckout = action({
     customerEmail: v.string(),
     customerPhone: v.union(v.string(), v.null()),
     seatIds: v.array(v.id("seats")),
+    bookingCategory: v.union(
+      v.literal("Gold"),
+      v.literal("Silver (JCO)"),
+      v.literal("Silver (OR)"),
+    ),
   },
   handler: async (ctx, args): Promise<CheckoutResult> => {
     const prepared: PreparedCheckout = await ctx.runMutation(internal.bookings.prepareCheckout, {
@@ -120,8 +123,7 @@ export const createCheckout = action({
           customer_email: prepared.customerEmail,
           customer_phone: prepared.customerPhone,
           subtotal: prepared.subtotal,
-          convenience_fee: prepared.convenienceFee,
-          gst_amount: prepared.gstAmount,
+          payment_fee: prepared.paymentFee,
           total_amount: prepared.totalAmount,
           expires_at: new Date(prepared.expiresAt).toISOString(),
           razorpay_order_id: order.id,

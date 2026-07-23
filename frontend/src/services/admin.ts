@@ -15,7 +15,7 @@ export interface SeatInput {
   row_index: number;
   col_index: number;
   seat_number: string;
-  category_name: string;
+  category_name: "Gold" | "Silver";
   price: number;
   status: string;
   is_visible: boolean;
@@ -41,11 +41,12 @@ const seatValues = (input: SeatInput) => ({
 });
 
 export const adminBackend = {
-  loadAll() {
+  loadSection(section: "overview" | "programming" | "bookings" | "setup") {
     const now = new Date();
     const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    return convex.query(api.admin.getAll, {
+    return convex.query(api.admin.getSection, {
+      section,
       today: now.toISOString().slice(0, 10),
       dayStart,
       monthStart,
@@ -68,15 +69,6 @@ export const adminBackend = {
     update: (id: string, input: SeatInput) => convex.mutation(api.admin.updateSeat, { seatId: id as Id<"seats">, ...seatValues(input) }),
     delete: (id: string) => convex.mutation(api.admin.deleteSeat, { seatId: id as Id<"seats"> }),
   },
-  reservations: {
-    create: (input: { show_id: string; seat_layout_id: string; reason: string }) =>
-      convex.mutation(api.admin.reserveSeat, {
-        showId: input.show_id as Id<"shows">,
-        seatId: input.seat_layout_id as Id<"seats">,
-        reason: input.reason.trim() || null,
-      }),
-    delete: (id: string) => convex.mutation(api.admin.releaseReservation, { reservationId: id as Id<"reservations"> }),
-  },
   bookings: {
     setStatus: (id: string, status: "confirmed" | "cancelled") =>
       convex.mutation(api.admin.setBookingStatus, { bookingId: id as Id<"bookings">, status }),
@@ -86,14 +78,10 @@ export const adminBackend = {
     update: (input: {
       max_seats_per_booking: number;
       seat_hold_minutes: number;
-      convenience_fee_per_seat: number;
-      gst_percentage: number;
       razorpay_fee_percentage: number;
     }) => convex.mutation(api.admin.updateSettings, {
       maxSeatsPerBooking: input.max_seats_per_booking,
       seatHoldMinutes: input.seat_hold_minutes,
-      convenienceFeePerSeat: input.convenience_fee_per_seat,
-      gstPercentage: input.gst_percentage,
       razorpayFeePercentage: input.razorpay_fee_percentage,
     }),
   },

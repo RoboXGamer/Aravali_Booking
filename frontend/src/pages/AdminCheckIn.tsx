@@ -62,8 +62,8 @@ export function AdminCheckIn() {
   const loadRecentCheckIns = useCallback(async () => {
     setLoadingRecent(true);
     try {
-      const data = await adminBackend.loadAll();
-      setRecentBookings(data.bookings as CheckedInBooking[]);
+      const data = await adminBackend.loadSection("bookings");
+      setRecentBookings(data.bookings as unknown as CheckedInBooking[]);
     } catch {
       // A failed history refresh should never prevent the scanner from being used.
     } finally {

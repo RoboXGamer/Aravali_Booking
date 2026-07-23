@@ -172,7 +172,7 @@ export function Checkout() {
 
           <dl className="mt-4 space-y-2.5 text-sm text-slate-400">
             <div className="flex justify-between gap-4"><dt>Tickets</dt><dd>INR {Number(session.subtotal).toFixed(2)}</dd></div>
-            <div className="flex justify-between gap-4"><dt>Payment fee</dt><dd>INR {Number(session.convenience_fee).toFixed(2)}</dd></div>
+            <div className="flex justify-between gap-4"><dt>Payment fee</dt><dd>INR {Number(session.payment_fee).toFixed(2)}</dd></div>
             <div className="flex justify-between gap-4 border-t border-[rgb(var(--booking-border)/0.13)] pt-4 text-lg font-black text-white">
               <dt>Total</dt><dd className="text-[rgb(var(--booking-accent-text))]">INR {Number(session.total_amount).toFixed(2)}</dd>
             </div>

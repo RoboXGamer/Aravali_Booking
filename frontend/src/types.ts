@@ -12,6 +12,13 @@ export interface Show {
 }
 
 export type SeatAvailability = "available" | "booked" | "held" | "reserved" | "disabled";
+export type BookingCategory = "Gold" | "Silver (JCO)" | "Silver (OR)";
+
+export interface TicketCategory {
+  id: BookingCategory;
+  seat_category: Seat["category_name"];
+  price: number;
+}
 
 export interface Seat {
   id: string;
@@ -20,7 +27,7 @@ export interface Seat {
   row_index: number;
   col_index: number;
   seat_number: string;
-  category_name: "Gold" | "Silver" | "Bronze";
+  category_name: "Gold" | "Silver";
   price: string | number;
   status: "active" | "disabled";
   is_visible: boolean;
@@ -37,9 +44,8 @@ export interface AvailabilityResponse {
 export interface BookingSettings {
   max_seats_per_booking: number;
   seat_hold_minutes: number;
-  convenience_fee_per_seat: string | number;
-  gst_percentage: string | number;
   razorpay_fee_percentage: string | number;
+  ticket_categories: TicketCategory[];
 }
 
 export interface CheckoutSession {
@@ -49,8 +55,7 @@ export interface CheckoutSession {
   customer_email: string;
   customer_phone: string | null;
   subtotal: string | number;
-  convenience_fee: string | number;
-  gst_amount: string | number;
+  payment_fee: string | number;
   total_amount: string | number;
   expires_at: string;
   razorpay_order_id: string;
@@ -71,7 +76,7 @@ export interface CheckoutResponse {
 export interface BookingSeat {
   id: string;
   seat_number: string;
-  category_name: string;
+  category_name: Seat["category_name"];
   price: string | number;
 }
 
@@ -82,8 +87,7 @@ export interface Booking {
   customer_email: string;
   customer_phone: string | null;
   subtotal: string | number;
-  convenience_fee: string | number;
-  gst_amount: string | number;
+  payment_fee: string | number;
   total_amount: string | number;
   status: "confirmed" | "cancelled";
   created_at: string;
