@@ -27,6 +27,18 @@
   line-height: 1.15;
 }
 
+.admin-header-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-menu-button,
+.admin-mobile-nav {
+  display: none;
+}
+
 .admin-header-actions {
   display: flex;
   align-items: center;
@@ -304,20 +316,194 @@
   }
 
   .admin-header {
-    flex-direction: column;
-    gap: 16px;
+    min-height: 44px;
+    align-items: center;
+    gap: 10px;
   }
 
   .admin-header h1 {
-    font-size: 25px;
+    overflow: hidden;
+    font-size: 19px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .admin-header-actions {
-    width: 100%;
+    display: none;
   }
 
-  .admin-tabs {
-    margin-top: 20px;
+  .admin-menu-button {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    flex: none;
+    place-items: center;
+    border: 1px solid rgb(var(--booking-border) / 0.18);
+    border-radius: 10px;
+    background: rgb(var(--booking-panel) / 0.82);
+    color: #cbd5e1;
+  }
+
+  .admin-menu-button svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .admin-tabs-desktop {
+    display: none;
+  }
+
+  .admin-mobile-nav {
+    position: fixed;
+    z-index: 80;
+    inset: 0;
+    display: block;
+  }
+
+  .admin-mobile-nav-backdrop {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(1, 5, 13, 0.72);
+    backdrop-filter: blur(4px);
+    animation: admin-backdrop-in 160ms ease-out;
+  }
+
+  .admin-mobile-drawer {
+    position: absolute;
+    inset: 0 auto 0 0;
+    display: flex;
+    width: min(86vw, 320px);
+    flex-direction: column;
+    padding: max(18px, env(safe-area-inset-top)) 14px max(18px, env(safe-area-inset-bottom));
+    border-right: 1px solid rgb(var(--booking-border) / 0.2);
+    background:
+      radial-gradient(circle at 20% 0, rgb(var(--booking-selected-start) / 0.16), transparent 30%),
+      #060d19;
+    box-shadow: 24px 0 70px rgba(0, 0, 0, 0.48);
+    animation: admin-drawer-in 190ms ease-out;
+  }
+
+  .admin-mobile-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 2px 4px 17px;
+    border-bottom: 1px solid rgb(var(--booking-border) / 0.14);
+  }
+
+  .admin-mobile-drawer-header > div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .admin-mobile-drawer-header span {
+    color: rgb(var(--booking-accent-text));
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  .admin-mobile-drawer-header strong {
+    overflow: hidden;
+    color: white;
+    font-size: 15px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .admin-mobile-drawer-header > button {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    flex: none;
+    place-items: center;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.05);
+    color: #94a3b8;
+  }
+
+  .admin-mobile-drawer-header svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .admin-mobile-tabs {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 5px;
+    padding: 14px 0;
+    overflow-y: auto;
+  }
+
+  .admin-mobile-tabs button {
+    display: flex;
+    width: 100%;
+    min-height: 46px;
+    align-items: center;
+    gap: 12px;
+    padding: 0 14px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    color: #8d9aab;
+    font-size: 13px;
+    font-weight: 750;
+    text-align: left;
+  }
+
+  .admin-mobile-tabs button.is-active {
+    border-color: rgb(var(--booking-selected-end) / 0.3);
+    background: linear-gradient(100deg, rgb(var(--booking-accent-start) / 0.3), rgb(var(--booking-accent-start) / 0.12));
+    color: white;
+  }
+
+  .admin-mobile-tabs svg {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    color: rgb(var(--booking-accent-text));
+  }
+
+  .admin-mobile-drawer-actions {
+    display: grid;
+    gap: 8px;
+    padding-top: 14px;
+    border-top: 1px solid rgb(var(--booking-border) / 0.14);
+  }
+
+  .admin-mobile-drawer-actions a,
+  .admin-mobile-drawer-actions button {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    gap: 11px;
+    padding: 0 14px;
+    border: 1px solid rgb(var(--booking-border) / 0.16);
+    border-radius: 10px;
+    background: rgb(var(--booking-panel) / 0.72);
+    color: #cbd5e1;
+    font-size: 12px;
+    font-weight: 750;
+  }
+
+  .admin-mobile-drawer-actions svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  @keyframes admin-backdrop-in {
+    from { opacity: 0; }
+  }
+
+  @keyframes admin-drawer-in {
+    from { transform: translateX(-100%); }
   }
 
   .admin-metrics {
@@ -346,11 +532,6 @@
 }
 
 @media (max-width: 460px) {
-  .admin-header-actions a,
-  .admin-header-actions button {
-    flex: 1;
-  }
-
   .admin-metrics {
     grid-template-columns: 1fr;
   }

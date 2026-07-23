@@ -1,7 +1,54 @@
 import { Hand, Info } from "lucide-react";
-import { useMemo } from "react";
+import { type ReactNode, useMemo } from "react";
 
 import type { Seat } from "../../types";
+
+interface SeatControlsProps {
+  selectedCategory: Seat["category_name"] | null;
+  onCategorySelect: (category: Seat["category_name"] | null) => void;
+  className?: string;
+  footer?: ReactNode;
+}
+
+export function SeatControls({
+  selectedCategory,
+  onCategorySelect,
+  className = "booking-seat-controls",
+  footer,
+}: SeatControlsProps) {
+  const categories: Seat["category_name"][] = ["Gold", "Silver", "Bronze"];
+
+  return (
+    <aside className={className} aria-label="Seat selection controls">
+      <div className="booking-seat-legend">
+        <span><i className="available" />Available</span>
+        <span><i className="selected" />Selected</span>
+        <span><i className="booked" />Booked</span>
+        <span><i className="premium" />Premium</span>
+      </div>
+
+      <div className="booking-category-options" aria-label="Choose seat category">
+        {categories.map((category) => (
+          <button
+            key={category}
+            type="button"
+            className={selectedCategory === category ? "is-active" : ""}
+            onClick={() => onCategorySelect(selectedCategory === category ? null : category)}
+          >
+            {category}
+          </button>
+        ))}
+      </div>
+
+      <p className="booking-category-lock">
+        <Info />
+        {selectedCategory ? `${selectedCategory} selected · Other seat categories are locked` : "Select a category to unlock seats"}
+      </p>
+
+      {footer}
+    </aside>
+  );
+}
 
 interface SeatMapProps {
   seats: Seat[];
@@ -14,7 +61,6 @@ interface SeatMapProps {
 
 export function SeatMap({ seats, selectedSeatIds, selectedCategory, onCategorySelect, onSeatSelect, maxSelectable }: SeatMapProps) {
   const supportedCategories: Seat["category_name"][] = ["Gold", "Silver", "Bronze"];
-  const categories = supportedCategories;
   const rows = useMemo(() => {
     const grouped = new Map<string, Seat[]>();
     [...seats].filter((seat) => supportedCategories.includes(seat.category_name))
@@ -33,32 +79,7 @@ export function SeatMap({ seats, selectedSeatIds, selectedCategory, onCategorySe
     <div className="booking-seat-map">
       <div className="booking-screen"><span>SCREEN THIS WAY</span></div>
 
-      <aside className="booking-seat-controls" aria-label="Seat selection controls">
-        <div className="booking-seat-legend">
-          <span><i className="available" />Available</span>
-          <span><i className="selected" />Selected</span>
-          <span><i className="booked" />Booked</span>
-          <span><i className="premium" />Premium</span>
-        </div>
-
-        <div className="booking-category-options" aria-label="Choose seat category">
-          {categories.map((category) => (
-            <button
-              key={category}
-              type="button"
-              className={selectedCategory === category ? "is-active" : ""}
-              onClick={() => onCategorySelect(selectedCategory === category ? null : category)}
-            >
-              {category}
-            </button>
-          ))}
-        </div>
-
-        <p className="booking-category-lock">
-          <Info />
-          {selectedCategory ? `${selectedCategory} selected · Other seat categories are locked` : "Select a category to unlock seats"}
-        </p>
-      </aside>
+      <SeatControls selectedCategory={selectedCategory} onCategorySelect={onCategorySelect} />
 
       <div className="booking-seat-area">
         <div className="booking-seat-scroll">

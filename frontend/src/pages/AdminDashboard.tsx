@@ -1,4 +1,4 @@
-import { BarChart3, CalendarDays, Clock3, Download, Film, LayoutGrid, LogOut, ScanLine, Search, Settings2, Ticket, Users } from "lucide-react";
+import { BarChart3, CalendarDays, Clock3, Download, Film, LayoutGrid, LogOut, Menu, ScanLine, Search, Settings2, Ticket, Users, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -55,6 +55,7 @@ export function AdminDashboard() {
   const [search, setSearch] = useState("");
   const [bookingMovieFilter, setBookingMovieFilter] = useState("");
   const [bookingDateFilter, setBookingDateFilter] = useState("");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const [movieForm, setMovieForm] = useState(emptyMovie);
   const [editingMovie, setEditingMovie] = useState<string | null>(null);
@@ -83,6 +84,25 @@ export function AdminDashboard() {
     const refreshTimer = window.setInterval(() => void loadAll(), 10 * 60 * 1000);
     return () => window.clearInterval(refreshTimer);
   }, [loadAll]);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileNavOpen(false);
+    };
+    const closeOnDesktop = () => {
+      if (window.innerWidth > 760) setMobileNavOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", closeOnDesktop);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", closeOnDesktop);
+    };
+  }, [mobileNavOpen]);
   const perform = async (action: () => Promise<unknown>): Promise<boolean> => { setSaving(true); setError(""); try { await action(); await loadAll(); return true; } catch (reason) { setError((reason as Error).message); return false; } finally { setSaving(false); } };
 
   const saveMovie = (event: FormEvent) => {
@@ -120,20 +140,61 @@ export function AdminDashboard() {
     <div className="admin-page">
       <main className="admin-shell">
       <header className="admin-header">
-        <h1>Auditorium operations</h1>
+        <div className="admin-header-title">
+          <button className="admin-menu-button" type="button" onClick={() => setMobileNavOpen(true)} aria-label="Open administration menu">
+            <Menu />
+          </button>
+          <h1>Auditorium operations</h1>
+        </div>
         <div className="admin-header-actions">
           <Link to="/admin/check-in"><Button variant="secondary" className="gap-2"><ScanLine className="h-4 w-4" /> Check-in</Button></Link>
           <Button variant="ghost" className="gap-2" onClick={() => { void authClient.signOut().finally(() => navigate("/admin/login")); }}><LogOut className="h-4 w-4" /> Sign out</Button>
         </div>
       </header>
 
-      <nav className="admin-tabs" aria-label="Administration sections">
+      <nav className="admin-tabs admin-tabs-desktop" aria-label="Administration sections">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button key={id} type="button" onClick={() => setTab(id)} className={tab === id ? "is-active" : ""} aria-current={tab === id ? "page" : undefined}>
             <Icon />{label}
           </button>
         ))}
       </nav>
+
+      {mobileNavOpen && (
+        <div className="admin-mobile-nav" role="presentation">
+          <button className="admin-mobile-nav-backdrop" type="button" onClick={() => setMobileNavOpen(false)} aria-label="Close administration menu" />
+          <aside className="admin-mobile-drawer" role="dialog" aria-modal="true" aria-label="Administration menu">
+            <div className="admin-mobile-drawer-header">
+              <div>
+                <span>Administration</span>
+                <strong>Auditorium operations</strong>
+              </div>
+              <button type="button" onClick={() => setMobileNavOpen(false)} aria-label="Close administration menu"><X /></button>
+            </div>
+
+            <nav className="admin-mobile-tabs" aria-label="Administration sections">
+              {tabs.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => { setTab(id); setMobileNavOpen(false); }}
+                  className={tab === id ? "is-active" : ""}
+                  aria-current={tab === id ? "page" : undefined}
+                >
+                  <Icon /><span>{label}</span>
+                </button>
+              ))}
+            </nav>
+
+            <div className="admin-mobile-drawer-actions">
+              <Link to="/admin/check-in" onClick={() => setMobileNavOpen(false)}><ScanLine />Check-in</Link>
+              <button type="button" onClick={() => { setMobileNavOpen(false); void authClient.signOut().finally(() => navigate("/admin/login")); }}>
+                <LogOut />Sign out
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
       {error && <p className="mt-5 rounded-xl border border-rose-900 bg-rose-950/20 p-4 text-sm text-rose-300">{error}</p>}
 
       {tab === "dashboard" && dashboard && <section className="admin-dashboard-view">

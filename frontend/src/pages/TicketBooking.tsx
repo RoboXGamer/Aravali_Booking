@@ -6,7 +6,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { Input } from "../components/common/Input";
-import { SeatMap } from "../components/common/SeatMap";
+import { SeatControls, SeatMap } from "../components/common/SeatMap";
 import { Spinner } from "../components/common/Spinner";
 import type { Seat } from "../types";
 
@@ -116,6 +116,25 @@ export function TicketBooking() {
             {error && !detailsOpen && <p className="booking-inline-error">{error}</p>}
           </div>
 
+          <SeatControls
+            className="booking-desktop-sidebar"
+            selectedCategory={selectedCategory}
+            onCategorySelect={chooseCategory}
+            footer={(
+              <div className="booking-desktop-summary">
+                <div>
+                  <strong>{selectedSeats.length} {selectedSeats.length === 1 ? "Seat" : "Seats"} Selected</strong>
+                  {selectedSeats.length > 0 && <span>{selectedSeats.map((seat) => seat.seat_number).join(", ")}</span>}
+                </div>
+                <div className="booking-desktop-total">
+                  <strong>₹{total.toFixed(2)}</strong>
+                </div>
+                <button type="button" disabled={!selectedSeats.length} onClick={() => { setError(""); setDetailsOpen(true); }}>
+                  Continue <ChevronRight />
+                </button>
+              </div>
+            )}
+          />
         </div>
 
         <footer className="booking-selection-bar">
@@ -123,7 +142,7 @@ export function TicketBooking() {
             <strong>{selectedSeats.length} {selectedSeats.length === 1 ? "Seat" : "Seats"} Selected</strong>
             <span>{selectedSeats.length ? selectedSeats.map((seat) => seat.seat_number).join(", ") : "Choose your seats"}</span>
           </div>
-          <div className="booking-total"><strong>₹{total.toFixed(2)}</strong><span>View Details</span></div>
+          <div className="booking-total"><strong>₹{total.toFixed(2)}</strong></div>
           <button type="button" disabled={!selectedSeats.length} onClick={() => { setError(""); setDetailsOpen(true); }}>
             Continue <ChevronRight />
           </button>
