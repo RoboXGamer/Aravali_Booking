@@ -1,20 +1,22 @@
 import { ArrowLeft, CalendarDays, ChevronRight, Clock3, MapPin, ShieldCheck, Ticket, X } from "lucide-react";
+import { useAction, useQuery } from "convex/react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import { Input } from "../components/common/Input";
 import { SeatMap } from "../components/common/SeatMap";
 import { Spinner } from "../components/common/Spinner";
-import { api } from "../services/api";
-import type { AvailabilityResponse, BookingSettings, CheckoutResponse, Seat, Show } from "../types";
-
-const AVAILABILITY_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
+import type { Seat } from "../types";
 
 export function TicketBooking() {
   const { event_id } = useParams();
   const navigate = useNavigate();
-  const [show, setShow] = useState<Show | null>(null);
-  const [settings, setSettings] = useState<BookingSettings | null>(null);
+  const show = useQuery(api.events.getById, event_id ? { showId: event_id as Id<"shows"> } : "skip");
+  const settings = useQuery(api.bookings.getBookingSettings);
+  const availability = useQuery(api.bookings.getAvailability, event_id ? { showId: event_id as Id<"shows"> } : "skip");
+  const createCheckout = useAction(api.payments.createCheckout);
   const [seats, setSeats] = useState<Seat[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<Seat["category_name"] | null>(null);
@@ -22,40 +24,15 @@ export function TicketBooking() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const refreshAvailability = async () => {
-    if (!event_id) return;
-    try {
-      const availability = await api.get<AvailabilityResponse>(`/api/bookings/availability/${event_id}`);
-      setSeats(availability.seats);
-      const availableIds = new Set(availability.seats.filter((seat) => seat.availability === "available").map((seat) => seat.id));
-      setSelectedIds((current) => current.filter((id) => availableIds.has(id)));
-    } catch {
-      // Background refresh failures should not interrupt an active selection.
-    }
-  };
-
   useEffect(() => {
-    if (!event_id) return;
-    Promise.all([
-      api.get<Show>(`/api/events/${event_id}`),
-      api.get<BookingSettings>("/api/bookings/settings"),
-      api.get<AvailabilityResponse>(`/api/bookings/availability/${event_id}`),
-    ])
-      .then(([showData, settingData, availability]) => {
-        setShow(showData);
-        setSettings(settingData);
-        setSeats(availability.seats);
-      })
-      .catch((reason: Error) => setError(reason.message))
-      .finally(() => setLoading(false));
-
-    const refreshTimer = window.setInterval(() => void refreshAvailability(), AVAILABILITY_REFRESH_INTERVAL_MS);
-    return () => window.clearInterval(refreshTimer);
-  }, [event_id]);
+    if (!availability) return;
+    setSeats(availability.seats as Seat[]);
+    const availableIds = new Set<string>(availability.seats.filter((seat) => seat.availability === "available").map((seat) => seat.id));
+    setSelectedIds((current) => current.filter((id) => availableIds.has(id)));
+  }, [availability]);
 
   const selectedSeats = useMemo(() => seats.filter((seat) => selectedIds.includes(seat.id)), [seats, selectedIds]);
   const subtotal = selectedSeats.reduce((sum, seat) => sum + Number(seat.price), 0);
@@ -84,25 +61,24 @@ export function TicketBooking() {
     setSubmitting(true);
     setError("");
     try {
-      const checkout = await api.post<CheckoutResponse>("/api/bookings/checkout-sessions", {
-        show_id: show.id,
-        customer_name: name.trim(),
-        customer_email: email.trim().toLowerCase(),
-        customer_phone: phone.trim() || null,
-        seat_layout_ids: selectedIds,
+      const checkout = await createCheckout({
+        showId: show.id as Id<"shows">,
+        customerName: name.trim(),
+        customerEmail: email.trim().toLowerCase(),
+        customerPhone: phone.trim() || null,
+        seatIds: selectedIds as Id<"seats">[],
       });
       const checkoutState = { ...checkout, show };
       sessionStorage.setItem("aravalli.checkout", JSON.stringify(checkoutState));
       navigate("/checkout", { state: checkoutState });
     } catch (reason) {
       setError((reason as Error).message);
-      await refreshAvailability();
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (loading) return <div className="flex min-h-screen items-center justify-center"><Spinner size="lg" /></div>;
+  if (show === undefined || settings === undefined || availability === undefined) return <div className="flex min-h-screen items-center justify-center"><Spinner size="lg" /></div>;
   if (!show || !settings) return <div className="mx-auto max-w-2xl px-5 py-20 text-center text-rose-300">{error || "Booking is unavailable."}</div>;
 
   const formattedDate = new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${show.date}T00:00:00`));

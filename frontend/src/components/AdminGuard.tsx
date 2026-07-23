@@ -1,28 +1,20 @@
-import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { Navigate, useLocation } from "react-router-dom";
 
-import { api, clearAdminSession, hasAdminSession } from "../services/api";
+import { api } from "../../convex/_generated/api";
 import { Spinner } from "./common/Spinner";
 
 export function AdminGuard({ children }: { children: ReactNode }) {
   const location = useLocation();
-  const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const { isAuthenticated, isLoading } = useConvexAuth();
+  const admin = useQuery(api.auth.getCurrentAdmin, isAuthenticated ? {} : "skip");
 
-  useEffect(() => {
-    if (!hasAdminSession()) {
-      setAuthorized(false);
-      return;
-    }
-    api.get("/api/admin/auth/me")
-      .then(() => setAuthorized(true))
-      .catch(() => {
-        clearAdminSession();
-        setAuthorized(false);
-      });
-  }, []);
-
-  if (authorized === null) return <div className="flex min-h-[60vh] items-center justify-center"><Spinner size="lg" /></div>;
-  if (!authorized) return <Navigate to="/admin/login" replace state={{ from: location.pathname }} />;
+  if (isLoading || (isAuthenticated && admin === undefined)) {
+    return <div className="flex min-h-[60vh] items-center justify-center"><Spinner size="lg" /></div>;
+  }
+  if (!isAuthenticated || !admin) {
+    return <Navigate to="/admin/login" replace state={{ from: location.pathname }} />;
+  }
   return children;
 }

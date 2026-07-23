@@ -1,29 +1,14 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "convex/react";
 import { Ticket } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { api } from "../services/api";
-import type { Show } from "../types";
+import { api } from "../../convex/_generated/api";
 import { MoviePoll } from "./MoviePoll";
 
 export function LandingPage() {
-  const [upcomingShow, setUpcomingShow] = useState<Show | null>(null);
-
-  useEffect(() => {
-    let active = true;
-
-    api.get<Show[]>("/api/events")
-      .then((shows) => {
-        if (active) setUpcomingShow(shows[0] || null);
-      })
-      .catch(() => {
-        if (active) setUpcomingShow(null);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
+  const today = new Date().toISOString().slice(0, 10);
+  const shows = useQuery(api.events.listUpcoming, { today });
+  const upcomingShow = shows?.[0] ?? null;
 
   return (
     <div>

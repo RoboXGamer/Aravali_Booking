@@ -1,0 +1,5 @@
+_generated/
+dist/
+.env.local
+.agents
+.claude

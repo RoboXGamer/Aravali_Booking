@@ -1,10 +1,10 @@
-import { ArrowLeft, Download, MailCheck, Search } from "lucide-react";
+import { ArrowLeft, Download, Search } from "lucide-react";
+import { useAction, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { Button } from "../components/common/Button";
 import { Spinner } from "../components/common/Spinner";
-import { api } from "../services/api";
 import type { Booking } from "../types";
 import "../confirmation.css";
 
@@ -20,19 +20,26 @@ export function Confirmation() {
   const routeState = (location.state || {}) as ConfirmationState;
   const storedEmail = booking_code ? sessionStorage.getItem(`aravalli.booking.email.${booking_code}`) : null;
   const email = routeState.email || storedEmail || "";
-  const [booking, setBooking] = useState<Booking | null>(routeState.booking || null);
-  const [loading, setLoading] = useState(!routeState.booking && Boolean(email));
+  const fetchedBooking = useQuery(
+    api.bookings.getByCode,
+    !routeState.booking && booking_code && email ? { bookingCode: booking_code, email } : "skip",
+  );
+  const getQr = useAction(api.tickets.getQrDataUrl);
+  const getPdf = useAction(api.tickets.getPdfBase64);
+  const booking = routeState.booking || (fetchedBooking as Booking | null | undefined) || null;
+  const [qrUrl, setQrUrl] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (booking || !booking_code || !email) return;
-    api.get<Booking>(`/api/bookings/${encodeURIComponent(booking_code)}?email=${encodeURIComponent(email)}`)
-      .then(setBooking)
-      .catch((reason: Error) => setError(reason.message))
-      .finally(() => setLoading(false));
-  }, [booking, booking_code, email]);
+    if (!booking || !booking_code || !email) return;
+    let active = true;
+    getQr({ bookingCode: booking_code, email })
+      .then((url) => { if (active) setQrUrl(url); })
+      .catch((reason: Error) => { if (active) setError(reason.message); });
+    return () => { active = false; };
+  }, [booking?.id, booking_code, email, getQr]);
 
-  if (loading) return <div className="ticket-loading"><Spinner size="lg" /></div>;
+  if (!routeState.booking && email && fetchedBooking === undefined) return <div className="ticket-loading"><Spinner size="lg" /></div>;
   if (!booking || !booking_code || !email) {
     return (
       <div className="mx-auto max-w-lg px-5 py-24 text-center">
@@ -50,7 +57,20 @@ export function Confirmation() {
   const showDate = new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${booking.shows.date}T00:00:00`));
   const [hours, minutes] = booking.shows.time.slice(0, 5).split(":").map(Number);
   const showTime = new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }).format(new Date(2000, 0, 1, hours, minutes));
-  const download = () => window.open(api.getDownloadUrl(booking.booking_code, email), "_blank", "noopener,noreferrer");
+  const download = async () => {
+    try {
+      const base64 = await getPdf({ bookingCode: booking.booking_code, email });
+      const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Aravalli-${booking.booking_code}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (reason) {
+      setError((reason as Error).message);
+    }
+  };
 
   return (
     <div className="ticket-page">
@@ -65,9 +85,7 @@ export function Confirmation() {
           </button>
         </header>
 
-        <p className="ticket-email-status">
-          <MailCheck /> Ticket sent to {booking.customer_email}
-        </p>
+        <p className="ticket-email-status">Booking confirmed for {booking.customer_email}</p>
 
         <article className="ticket-card">
           <section className="ticket-details-section">
@@ -100,7 +118,7 @@ export function Confirmation() {
             <span aria-hidden="true" className="ticket-notch ticket-notch-left" />
             <span aria-hidden="true" className="ticket-notch ticket-notch-right" />
             <div className="ticket-qr-frame">
-              <img src={api.getQrUrl(booking.booking_code, email)} alt={`Entry QR code for booking ${booking.booking_code}`} />
+              {qrUrl ? <img src={qrUrl} alt={`Entry QR code for booking ${booking.booking_code}`} /> : <Spinner />}
             </div>
             <p>Scan this QR at the entrance</p>
             <div className="ticket-total"><span>Total paid</span><strong>₹{Number(booking.total_amount).toFixed(2)}</strong></div>
@@ -112,3 +130,4 @@ export function Confirmation() {
     </div>
   );
 }
+import { api } from "../../convex/_generated/api";

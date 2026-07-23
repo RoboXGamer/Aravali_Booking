@@ -1,4 +1,5 @@
 import { ArrowLeft, Clock3, CreditCard, ShieldCheck } from "lucide-react";
+import { useAction } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -6,8 +7,7 @@ import { Button } from "../components/common/Button";
 import { Card } from "../components/common/Card";
 import { Spinner } from "../components/common/Spinner";
 import { useRazorpay } from "../hooks/useRazorpay";
-import { api } from "../services/api";
-import type { CheckoutResponse, PaymentVerificationResponse, RazorpaySuccessResponse, Show } from "../types";
+import type { CheckoutResponse, RazorpaySuccessResponse, Show } from "../types";
 
 interface CheckoutState extends CheckoutResponse {
   show: Show;
@@ -33,6 +33,7 @@ export function Checkout() {
   const location = useLocation();
   const navigate = useNavigate();
   const razorpayLoaded = useRazorpay();
+  const verifyPayment = useAction(api.payments.verify);
   const checkout = useMemo(() => loadCheckoutState(location.state), [location.state]);
   const [secondsLeft, setSecondsLeft] = useState(() => getSecondsRemaining(checkout));
   const [verifying, setVerifying] = useState(false);
@@ -84,15 +85,17 @@ export function Checkout() {
       handler: async (response: RazorpaySuccessResponse) => {
         setVerifying(true);
         try {
-          const verified = await api.post<PaymentVerificationResponse>("/api/bookings/verify", {
-            ...response,
-            checkout_session_id: session.id,
+          const verified = await verifyPayment({
+            razorpayOrderId: response.razorpay_order_id,
+            razorpayPaymentId: response.razorpay_payment_id,
+            razorpaySignature: response.razorpay_signature,
+            checkoutSessionId: session.id as Id<"checkoutSessions">,
           });
           sessionStorage.removeItem("aravalli.checkout");
           sessionStorage.setItem(`aravalli.booking.email.${verified.booking_code}`, session.customer_email);
           navigate(`/confirmation/${verified.booking_code}`, {
             replace: true,
-            state: { booking: verified.booking, email: session.customer_email },
+            state: { email: session.customer_email },
           });
         } catch (reason) {
           setError((reason as Error).message);
@@ -185,3 +188,5 @@ export function Checkout() {
     </div>
   );
 }
+import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";

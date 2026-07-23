@@ -1,7 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Pencil, Play, Square, Trash2, Trophy } from "lucide-react";
 
-import { api } from "../../services/api";
+import { adminBackend } from "../../services/admin";
 import { Button } from "../common/Button";
 import { Card } from "../common/Card";
 import { Input } from "../common/Input";
@@ -9,7 +9,6 @@ import { Input } from "../common/Input";
 interface PollMovie {
   id: string;
   title: string;
-  is_active: boolean;
 }
 
 interface PollOption {
@@ -66,9 +65,7 @@ export function PollManagement({ movies, polls, saving, perform }: Props) {
       voting_starts_at: new Date(form.voting_starts_at).toISOString(),
       voting_ends_at: new Date(form.voting_ends_at).toISOString(),
     };
-    const succeeded = await perform(() => editingId
-      ? api.put(`/api/admin/polls/${editingId}`, payload)
-      : api.post("/api/admin/polls", payload));
+    const succeeded = await perform(() => adminBackend.polls.save(editingId, payload));
     if (succeeded) reset();
   };
 
@@ -86,17 +83,17 @@ export function PollManagement({ movies, polls, saving, perform }: Props) {
 
   const changeStatus = (poll: AdminPoll, status: "draft" | "voting" | "closed") => {
     if (status === "closed" && !window.confirm("Close voting and schedule the leading movie?")) return;
-    void perform(() => api.patch(`/api/admin/polls/${poll.id}/status`, { status }));
+    void perform(() => adminBackend.polls.setStatus(poll.id, status));
   };
 
   const remove = (poll: AdminPoll) => {
     if (!window.confirm(`Delete the poll for week ${poll.week_start}? Voting data will be removed.`)) return;
-    void perform(() => api.delete(`/api/admin/polls/${poll.id}`));
+    void perform(() => adminBackend.polls.delete(poll.id));
   };
 
   const overrideWinner = (poll: AdminPoll, option: PollOption) => {
     if (!window.confirm(`Set ${option.movies.title} as the winner and schedule its shows?`)) return;
-    void perform(() => api.post(`/api/admin/polls/${poll.id}/override`, { movie_id: option.movie_id }));
+    void perform(() => adminBackend.polls.override(poll.id, option.movie_id));
   };
 
   return (
@@ -117,7 +114,7 @@ export function PollManagement({ movies, polls, saving, perform }: Props) {
           <fieldset>
             <legend className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Movie options</legend>
             <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-slate-800 p-3">
-              {movies.filter((movie) => movie.is_active).map((movie) => (
+              {movies.map((movie) => (
                 <label key={movie.id} className="flex items-center gap-3 rounded-md px-2 py-2 text-sm text-slate-300 hover:bg-white/5">
                   <input type="checkbox" checked={form.movie_ids.includes(movie.id)} onChange={() => setForm({ ...form, movie_ids: form.movie_ids.includes(movie.id) ? form.movie_ids.filter((id) => id !== movie.id) : [...form.movie_ids, movie.id] })} />
                   {movie.title}

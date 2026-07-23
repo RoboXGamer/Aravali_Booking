@@ -1,11 +1,16 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import App from "./App";
+import { authClient } from "./lib/auth-client";
+import { convex } from "./lib/convex";
 import "./index.css";
 import "./booking.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <ConvexBetterAuthProvider client={convex} authClient={authClient}>
+      <App />
+    </ConvexBetterAuthProvider>
   </React.StrictMode>,
 );

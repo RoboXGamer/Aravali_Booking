@@ -1,9 +1,10 @@
 import { ArrowRight, CheckCircle2, Clock3, Popcorn, Trophy } from "lucide-react";
+import { useMutation, useQuery } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
 
+import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import { Spinner } from "../components/common/Spinner";
-import { api } from "../services/api";
-import type { PollResponse } from "../types";
 
 const VISITOR_KEY = "aravalli.poll.visitor";
 
@@ -27,29 +28,22 @@ function formatRemaining(milliseconds: number): string {
 
 export function MoviePoll() {
   const visitorId = useMemo(getVisitorId, []);
-  const [data, setData] = useState<PollResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const data = useQuery(api.polls.getCurrent, { visitorId });
+  const castVote = useMutation(api.polls.vote);
   const [votingOption, setVotingOption] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    api.get<PollResponse>(`/api/polls/current?visitor_id=${encodeURIComponent(visitorId)}`)
-      .then(setData)
-      .catch((reason: Error) => setError(reason.message))
-      .finally(() => setLoading(false));
     const timer = window.setInterval(() => setNow(Date.now()), 30000);
     return () => window.clearInterval(timer);
-  }, [visitorId]);
+  }, []);
 
   const vote = async (optionId: string) => {
     setVotingOption(optionId);
     setError("");
     try {
-      setData(await api.post<PollResponse>("/api/polls/vote", {
-        poll_option_id: optionId,
-        visitor_id: visitorId,
-      }));
+      await castVote({ optionId: optionId as Id<"pollOptions">, visitorId, now: Date.now() });
     } catch (reason) {
       setError((reason as Error).message);
     } finally {
@@ -57,7 +51,7 @@ export function MoviePoll() {
     }
   };
 
-  if (loading) return <div className="flex min-h-[40vh] items-center justify-center"><Spinner size="lg" /></div>;
+  if (data === undefined) return <div className="flex min-h-[40vh] items-center justify-center"><Spinner size="lg" /></div>;
 
   if (!data?.poll) {
     return (

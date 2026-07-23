@@ -6,15 +6,8 @@ export interface Show {
   date: string;
   time: string;
   venue: string;
-  poster_url: string | null;
-  trailer_url: string | null;
+  poster_url: string;
   duration_minutes: number;
-  genre: string;
-  certificate: string;
-  language: string;
-  cast_members: string | null;
-  director: string | null;
-  release_year: number;
   status: "active" | "disabled";
 }
 
@@ -122,12 +115,9 @@ export interface RazorpaySuccessResponse {
 export interface PollMovie {
   id: string;
   title: string;
-  synopsis: string | null;
-  poster_url: string | null;
-  genre: string;
-  language: string;
+  description: string;
+  poster_url: string;
   duration_minutes: number;
-  certificate: string;
 }
 
 export interface PollOption {

@@ -12,7 +12,7 @@ import {
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { api } from "../services/api";
+import { adminBackend } from "../services/admin";
 
 interface CheckInResult {
   status: string;
@@ -62,8 +62,8 @@ export function AdminCheckIn() {
   const loadRecentCheckIns = useCallback(async () => {
     setLoadingRecent(true);
     try {
-      const bookings = await api.get<CheckedInBooking[]>("/api/admin/bookings?status=confirmed");
-      setRecentBookings(bookings);
+      const data = await adminBackend.loadAll();
+      setRecentBookings(data.bookings as CheckedInBooking[]);
     } catch {
       // A failed history refresh should never prevent the scanner from being used.
     } finally {
@@ -88,10 +88,7 @@ export function AdminCheckIn() {
     setError("");
     setResult(null);
     try {
-      const response = await api.post<CheckInResult>(
-        `/api/admin/check-in/${encodeURIComponent(normalizedCode)}`,
-        {},
-      );
+      const response = await adminBackend.bookings.checkIn(normalizedCode);
       setResult(response);
       setBookingCode("");
       setShowManualEntry(false);
@@ -295,7 +292,7 @@ export function AdminCheckIn() {
         </div>
 
         <footer className="border-t border-slate-700/35 py-5 text-center text-[11px] text-slate-600">
-          Powered by <span className="text-violet-400">FastAPI</span> · <span className="text-violet-400">React</span> · <span className="text-violet-400">Supabase</span>
+          Powered by <span className="text-violet-400">Convex</span> · <span className="text-violet-400">React</span>
         </footer>
       </main>
     </div>

@@ -1,12 +1,12 @@
 import { FormEvent, useEffect, useState } from "react";
 
-import { api } from "../../services/api";
+import { adminBackend } from "../../services/admin";
 import { Button } from "../common/Button";
 import { Card } from "../common/Card";
 import { Input } from "../common/Input";
 
 export interface AppSettings {
-  id: number;
+  id: string | number;
   max_seats_per_booking: number | string;
   seat_hold_minutes: number | string;
   convenience_fee_per_seat: number | string;
@@ -14,8 +14,15 @@ export interface AppSettings {
   razorpay_fee_percentage: number | string;
 }
 
+export interface AdminAccess {
+  id: string;
+  email: string;
+  isAdmin: boolean;
+}
+
 interface Props {
   settings: AppSettings | null;
+  adminUsers: AdminAccess[];
   saving: boolean;
   perform: (action: () => Promise<unknown>) => Promise<boolean>;
 }
@@ -28,8 +35,9 @@ const emptyForm = {
   razorpay_fee_percentage: "2",
 };
 
-export function ApplicationSettings({ settings, saving, perform }: Props) {
+export function ApplicationSettings({ settings, adminUsers, saving, perform }: Props) {
   const [form, setForm] = useState(emptyForm);
+  const [adminEmail, setAdminEmail] = useState("");
 
   useEffect(() => {
     if (!settings) return;
@@ -44,13 +52,19 @@ export function ApplicationSettings({ settings, saving, perform }: Props) {
 
   const save = (event: FormEvent) => {
     event.preventDefault();
-    void perform(() => api.put("/api/admin/settings", {
+    void perform(() => adminBackend.settings.update({
       max_seats_per_booking: Number(form.max_seats_per_booking),
       seat_hold_minutes: Number(form.seat_hold_minutes),
       convenience_fee_per_seat: Number(form.convenience_fee_per_seat),
       gst_percentage: Number(form.gst_percentage),
       razorpay_fee_percentage: Number(form.razorpay_fee_percentage),
     }));
+  };
+
+  const addAdmin = async (event: FormEvent) => {
+    event.preventDefault();
+    const succeeded = await perform(() => adminBackend.admins.setAccess(adminEmail, true));
+    if (succeeded) setAdminEmail("");
   };
 
   return (
@@ -70,12 +84,27 @@ export function ApplicationSettings({ settings, saving, perform }: Props) {
         </form>
       </Card>
       <Card>
-        <h3 className="font-black text-white">What these control</h3>
-        <dl className="mt-5 space-y-4 text-sm">
-          <div><dt className="font-bold text-slate-200">Booking limit</dt><dd className="mt-1 text-slate-500">Maximum seats a customer can purchase in one booking.</dd></div>
-          <div><dt className="font-bold text-slate-200">Seat hold</dt><dd className="mt-1 text-slate-500">How long selected seats remain unavailable during checkout.</dd></div>
-          <div><dt className="font-bold text-slate-200">Fees and tax</dt><dd className="mt-1 text-slate-500">Included in the total calculated before the Razorpay order is created.</dd></div>
-        </dl>
+        <h3 className="font-black text-white">Administrator access</h3>
+        <p className="mt-1 text-sm text-slate-400">Enable access before a new administrator creates their account.</p>
+        <form className="mt-5 flex gap-2" onSubmit={(event) => void addAdmin(event)}>
+          <Input label="Admin email" type="email" required value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} />
+          <div className="flex items-end"><Button type="submit" disabled={saving}>Add</Button></div>
+        </form>
+        <div className="mt-5 divide-y divide-slate-800">
+          {adminUsers.map((admin) => (
+            <div key={admin.id} className="flex items-center justify-between gap-3 py-3">
+              <div><p className="text-sm font-semibold text-white">{admin.email}</p><p className="text-xs text-slate-500">{admin.isAdmin ? "Admin enabled" : "Admin disabled"}</p></div>
+              <Button
+                size="sm"
+                variant={admin.isAdmin ? "danger" : "secondary"}
+                disabled={saving}
+                onClick={() => void perform(() => adminBackend.admins.setAccess(admin.email, !admin.isAdmin))}
+              >
+                {admin.isAdmin ? "Disable" : "Enable"}
+              </Button>
+            </div>
+          ))}
+        </div>
       </Card>
     </section>
   );
