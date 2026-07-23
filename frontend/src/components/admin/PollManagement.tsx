@@ -82,7 +82,7 @@ export function PollManagement({ movies, polls, saving, perform }: Props) {
   };
 
   const changeStatus = (poll: AdminPoll, status: "draft" | "voting" | "closed") => {
-    if (status === "closed" && !window.confirm("Close voting and schedule the leading movie?")) return;
+    if (status === "closed" && !window.confirm("Close voting and select the leading movie as the winner?")) return;
     void perform(() => adminBackend.polls.setStatus(poll.id, status));
   };
 
@@ -92,7 +92,7 @@ export function PollManagement({ movies, polls, saving, perform }: Props) {
   };
 
   const overrideWinner = (poll: AdminPoll, option: PollOption) => {
-    if (!window.confirm(`Set ${option.movies.title} as the winner and schedule its shows?`)) return;
+    if (!window.confirm(`Set ${option.movies.title} as the poll winner?`)) return;
     void perform(() => adminBackend.polls.override(poll.id, option.movie_id));
   };
 
@@ -112,18 +112,23 @@ export function PollManagement({ movies, polls, saving, perform }: Props) {
             </select>
           </label>
           <fieldset>
-            <legend className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Movie options</legend>
+            <legend className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Movie options (2–10)</legend>
             <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-slate-800 p-3">
               {movies.map((movie) => (
                 <label key={movie.id} className="flex items-center gap-3 rounded-md px-2 py-2 text-sm text-slate-300 hover:bg-white/5">
-                  <input type="checkbox" checked={form.movie_ids.includes(movie.id)} onChange={() => setForm({ ...form, movie_ids: form.movie_ids.includes(movie.id) ? form.movie_ids.filter((id) => id !== movie.id) : [...form.movie_ids, movie.id] })} />
+                  <input
+                    type="checkbox"
+                    checked={form.movie_ids.includes(movie.id)}
+                    disabled={!form.movie_ids.includes(movie.id) && form.movie_ids.length >= 10}
+                    onChange={() => setForm({ ...form, movie_ids: form.movie_ids.includes(movie.id) ? form.movie_ids.filter((id) => id !== movie.id) : [...form.movie_ids, movie.id] })}
+                  />
                   {movie.title}
                 </label>
               ))}
             </div>
           </fieldset>
           <div className="flex gap-2">
-            <Button type="submit" className="flex-1" disabled={saving || form.movie_ids.length < 2}>{editingId ? "Save poll" : "Create poll"}</Button>
+            <Button type="submit" className="flex-1" disabled={saving || form.movie_ids.length < 2 || form.movie_ids.length > 10}>{editingId ? "Save poll" : "Create poll"}</Button>
             {editingId && <Button type="button" variant="secondary" onClick={reset}>Cancel</Button>}
           </div>
         </form>

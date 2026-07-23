@@ -429,6 +429,7 @@ export const savePoll = mutation({
     if (monday.getUTCDay() !== 1) throw new Error("Movie week must start on a Monday.");
     const movieIds = [...new Set(args.movieIds)];
     if (movieIds.length < 2) throw new Error("Choose at least two movies.");
+    if (movieIds.length > 10) throw new Error("Choose no more than ten movies.");
     let pollId: Id<"polls">;
     if (args.pollId) {
       const poll = await ctx.db.get("polls", args.pollId);

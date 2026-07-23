@@ -1,7 +1,7 @@
-import { ArrowRight, CheckCircle2, Clock3, Popcorn, Trophy, WifiOff } from "lucide-react";
+import { Clock3, Popcorn, Trophy, WifiOff } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -39,6 +39,11 @@ function PollHeader({ status }: { status: ReactNode }) {
       <div className="movie-poll-desktop-timer"><Clock3 />{status}</div>
     </header>
   );
+}
+
+function getPollColumnCount(optionCount: number): number {
+  if (optionCount <= 4) return Math.max(1, optionCount);
+  return Math.ceil(optionCount / 2);
 }
 
 export function MoviePoll() {
@@ -123,6 +128,11 @@ export function MoviePoll() {
   const remaining = new Date(poll.voting_ends_at).getTime() - now;
   const open = data.is_open && remaining > 0;
   const winner = poll.winning_movie || options.find((option) => option.movie_id === poll.winning_movie_id)?.movie;
+  const columnCount = getPollColumnCount(options.length);
+  const hasShortFinalRow = options.length >= 5 && options.length % 2 === 1;
+  const gridStyle = {
+    "--movie-poll-tracks": columnCount * 2,
+  } as CSSProperties;
 
   const timer = open ? <span>Poll ends in <strong>{formatRemaining(remaining)}</strong></span> : <strong>Poll closed</strong>;
 
@@ -136,13 +146,17 @@ export function MoviePoll() {
         )}
         {error && <p className="movie-poll-error">{error}</p>}
 
-        <div className="movie-poll-grid">
+        <div className="movie-poll-grid" style={gridStyle}>
           {options.map((option, index) => {
             const selected = selectedId === option.id;
             const letter = String.fromCharCode(65 + index);
             const posterUrl = option.movie.poster_url || "https://placehold.co/600x900/16191D/FFFFFF?text=Movie";
             return (
-              <article key={option.id} className={`movie-poll-option ${selected ? "is-selected" : ""}`}>
+              <article
+                key={option.id}
+                className={`movie-poll-option ${selected ? "is-selected" : ""}`}
+                style={hasShortFinalRow && index === columnCount ? { gridColumn: "2 / span 2", gridRow: 2 } : undefined}
+              >
                 <div className="movie-poll-media">
                   <img
                     src={posterUrl}
@@ -168,7 +182,6 @@ export function MoviePoll() {
                     aria-label={`Vote for ${option.movie.title}`}
                   >
                     <span>{selected ? `VOTED ${letter}` : votingOption === option.id ? "RECORDING..." : open ? `VOTE ${letter}` : "CLOSED"}</span>
-                    <span className="movie-poll-arrow">{selected ? <CheckCircle2 /> : <ArrowRight />}</span>
                   </button>
                 </div>
               </article>

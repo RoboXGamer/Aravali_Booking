@@ -331,8 +331,8 @@
 .movie-poll-desktop-timer { display: flex; align-items: center; gap: 7px; flex: none; padding: 9px 13px; border: 1px solid rgba(255,255,255,.1); border-radius: 12px; background: rgba(255,255,255,.04); color: #9ca3af; font-size: 13px; }
 .movie-poll-desktop-timer svg { width: 17px; height: 17px; }
 .movie-poll-desktop-timer strong, .movie-poll-mobile-timer strong { color: white; }
-.movie-poll-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; padding: 24px 28px; }
-.movie-poll-option { overflow: hidden; border: 1px solid rgba(255,255,255,.15); border-radius: 16px; background: #101216; transition: border-color .18s ease; }
+.movie-poll-grid { display: grid; grid-template-columns: repeat(var(--movie-poll-tracks, 6),minmax(0,1fr)); gap: 16px; padding: 24px 28px; }
+.movie-poll-option { grid-column: span 2; min-width: 0; overflow: hidden; border: 1px solid rgba(255,255,255,.15); border-radius: 16px; background: #101216; transition: border-color .18s ease; }
 .movie-poll-option:hover { border-color: rgba(255,255,255,.35); }
 .movie-poll-option.is-selected { border-color: white; box-shadow: 0 0 0 2px rgba(255,255,255,.18); }
 .movie-poll-media { position: relative; aspect-ratio: 2 / 3; overflow: hidden; background: #080a0d; isolation: isolate; }
@@ -345,15 +345,11 @@
 .movie-poll-letter { position: absolute; top: 15px; left: 15px; display: grid; width: 52px; height: 52px; place-items: center; border: 1px solid rgba(255,255,255,.18); border-radius: 13px; background: rgba(0,0,0,.7); color: white; font-size: 27px; font-weight: 900; backdrop-filter: blur(10px); }
 .movie-poll-action-wrap { padding: 14px 15px 15px; border-top: 1px solid rgba(255,255,255,.08); background: #101216; }
 .movie-poll-title { overflow: hidden; margin: 0 3px 10px; color: rgba(255,255,255,.88); font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-.movie-poll-vote { display: grid; width: 100%; grid-template-columns: 19px 1fr 19px; align-items: center; padding: 13px 17px; border: 1px solid rgba(255,255,255,.16); border-radius: 13px; background: rgba(23,26,31,.96); color: white; font-size: 13px; font-weight: 900; letter-spacing: .04em; backdrop-filter: blur(10px); transition: background .18s ease; }
-.movie-poll-vote::before { content: ""; width: 19px; height: 1px; }
-.movie-poll-vote > span:first-of-type { text-align: center; }
+.movie-poll-vote { display: flex; width: 100%; align-items: center; justify-content: center; padding: 13px 17px; border: 1px solid rgba(255,255,255,.16); border-radius: 13px; background: rgba(23,26,31,.96); color: white; font-size: 13px; font-weight: 900; letter-spacing: .04em; backdrop-filter: blur(10px); transition: background .18s ease; }
 .movie-poll-vote:hover:not(:disabled) { background: #24282e; }
 .movie-poll-vote.is-selected { border-color: white; background: white; color: black; }
 .movie-poll-vote.is-dimmed { opacity: .5; }
 .movie-poll-vote:disabled { cursor: not-allowed; }
-.movie-poll-arrow { display: grid; width: 19px; height: 19px; place-items: center; }
-.movie-poll-arrow svg { width: 19px; height: 19px; }
 .movie-poll-mobile-timer { display: none; }
 .movie-poll-message { display: flex; align-items: center; gap: 10px; margin: 24px 40px 0; padding: 12px 16px; border: 1px solid rgba(255,255,255,.1); border-radius: 12px; background: rgba(255,255,255,.04); color: #9ca3af; font-size: 14px; }
 .movie-poll-message svg { width: 20px; height: 20px; color: white; }
@@ -376,21 +372,26 @@
   .movie-poll-icon { width: 20px; height: 20px; }
   .movie-poll-heading h1 { font-size: 12px; letter-spacing: .05em; }
   .movie-poll-heading p, .movie-poll-divider, .movie-poll-desktop-timer { display: none; }
-  .movie-poll-grid { grid-template-columns: 1fr; gap: 8px; padding: 12px; }
-  .movie-poll-option { border-radius: 12px; }
-  .movie-poll-media { aspect-ratio: 16 / 10; }
-  .movie-poll-letter { top: 10px; left: 10px; width: 34px; height: 34px; border-radius: 9px; font-size: 16px; }
-  .movie-poll-action-wrap { padding: 12px; }
-  .movie-poll-title { margin-bottom: 9px; font-size: 12px; }
-  .movie-poll-vote { grid-template-columns: 32px 1fr 32px; padding: 11px 12px; font-size: 12px; }
-  .movie-poll-vote::before { width: 32px; }
-  .movie-poll-arrow { width: 32px; height: 32px; border: 1px solid rgba(255,255,255,.14); border-radius: 50%; background: rgba(255,255,255,.03); }
+  .movie-poll-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px 12px; padding: 14px 12px 18px; }
+  .movie-poll-option { grid-column: auto !important; grid-row: auto !important; overflow: visible; border: 0; border-radius: 0; background: transparent; }
+  .movie-poll-option:hover { border-color: transparent; }
+  .movie-poll-option.is-selected { border-color: transparent; box-shadow: none; }
+  .movie-poll-media { aspect-ratio: 4 / 5; }
+  .movie-poll-media { border: 1px solid rgba(255,255,255,.14); border-radius: 12px; }
+  .movie-poll-option.is-selected .movie-poll-media { border-color: rgb(var(--color-brand-light)); box-shadow: 0 0 0 2px rgb(var(--color-brand) / .2); }
+  .movie-poll-poster-backdrop { filter: blur(16px) brightness(.42) saturate(1.15); }
+  .movie-poll-letter { top: 8px; left: 8px; width: 30px; height: 30px; border-radius: 8px; font-size: 14px; }
+  .movie-poll-action-wrap { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 8px; padding: 9px 2px 0; border-top: 0; background: transparent; }
+  .movie-poll-title { display: -webkit-box; min-height: 30px; margin: 0; overflow: hidden; color: white; font-size: 11px; line-height: 15px; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .movie-poll-vote { display: inline-flex; width: auto; min-width: 58px; min-height: 30px; align-self: end; padding: 6px 10px; border-color: rgb(var(--color-brand) / .42); border-radius: 8px; background: rgb(var(--color-brand-dark) / .32); color: rgb(var(--color-brand-light)); font-size: 9px; box-shadow: 0 7px 18px rgb(var(--color-brand-dark) / .2); }
+  .movie-poll-vote:hover:not(:disabled) { background: rgb(var(--color-brand-dark) / .5); }
+  .movie-poll-vote.is-selected { border-color: rgb(var(--color-brand-light)); background: linear-gradient(110deg,rgb(var(--booking-accent-start)),rgb(var(--booking-accent-end))); color: white; }
   .movie-poll-arrow svg { width: 20px; height: 20px; }
   .movie-poll-mobile-timer { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px; border-top: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.025); color: #9ca3af; font-size: 11px; }
   .movie-poll-mobile-timer svg { width: 14px; height: 14px; }
   .movie-poll-message, .movie-poll-error { margin: 12px 12px 0; }
   .movie-poll-empty { min-height: 220px; padding: 32px 20px; }
-  .movie-poll-option-skeleton { min-height: 220px; padding: 16px; }
+  .movie-poll-option-skeleton { min-height: 230px; padding: 12px; }
 }
 
 .booking-page { min-height: 100vh; background: radial-gradient(circle at top,rgb(var(--booking-selected-start) / .13),transparent 38%),rgb(var(--booking-background)); }
