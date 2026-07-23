@@ -7,8 +7,10 @@ import { useLoadingTimeout } from "../hooks/useLoadingTimeout";
 import { MoviePoll } from "./MoviePoll";
 
 export function LandingPage() {
-  const today = new Date().toISOString().slice(0, 10);
-  const shows = useQuery(api.events.listUpcoming, { today });
+  const now = new Date();
+  const today = now.toLocaleDateString("en-CA");
+  const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const shows = useQuery(api.events.listUpcoming, { today, currentTime });
   const upcomingShow = shows?.[0] ?? null;
   const loadingTimedOut = useLoadingTimeout(shows === undefined);
   const isLoading = shows === undefined && !loadingTimedOut;
@@ -45,7 +47,7 @@ export function LandingPage() {
             {upcomingShow.description && <p>{upcomingShow.description}</p>}
             <div className="featured-movie-actions">
               <Link
-                to={`/book/${upcomingShow.id}`}
+                to={`/showtimes/${upcomingShow.movie_id}`}
                 className="featured-movie-play"
               >
                 <Ticket /> Book Ticket

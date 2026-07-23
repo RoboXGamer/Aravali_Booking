@@ -12,10 +12,11 @@ import {
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { friendlyErrorMessage } from "../lib/friendlyError";
 import { adminBackend } from "../services/admin";
 
 interface CheckInResult {
-  status: string;
+  status: "success";
   booking_code: string;
   customer_name: string;
   checked_in_at: string;
@@ -35,6 +36,23 @@ interface CheckedInBooking {
 
 const formatCheckInTime = (value: string) =>
   new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(value));
+
+const checkInOutcomeMessage = (
+  response: Awaited<ReturnType<typeof adminBackend.bookings.checkIn>>,
+) => {
+  switch (response.status) {
+    case "not_found":
+      return "No ticket matches that booking ID. Check the code and try again.";
+    case "cancelled":
+      return "This ticket was cancelled and cannot be checked in.";
+    case "already_checked_in":
+      return response.checked_in_at
+        ? `This ticket was already checked in at ${formatCheckInTime(response.checked_in_at)}.`
+        : "This ticket has already been checked in.";
+    default:
+      return null;
+  }
+};
 
 export function AdminCheckIn() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -81,7 +99,11 @@ export function AdminCheckIn() {
 
   const checkIn = useCallback(async (code: string) => {
     const normalizedCode = code.trim().toUpperCase();
-    if (!normalizedCode || scanLockRef.current) return;
+    if (scanLockRef.current) return;
+    if (!normalizedCode) {
+      setError("Enter a booking ID to check in.");
+      return;
+    }
 
     scanLockRef.current = true;
     setLoading(true);
@@ -89,13 +111,21 @@ export function AdminCheckIn() {
     setResult(null);
     try {
       const response = await adminBackend.bookings.checkIn(normalizedCode);
+      if (response.status !== "success") {
+        setError(checkInOutcomeMessage(response) ?? "This ticket cannot be checked in.");
+        stopCamera();
+        return;
+      }
       setResult(response);
       setBookingCode("");
       setShowManualEntry(false);
       stopCamera();
       await loadRecentCheckIns();
     } catch (reason) {
-      setError((reason as Error).message);
+      setError(friendlyErrorMessage(
+        reason,
+        "We couldn't verify this ticket. Please wait a moment and try again.",
+      ));
       stopCamera();
     } finally {
       scanLockRef.current = false;

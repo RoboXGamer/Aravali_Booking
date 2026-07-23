@@ -179,18 +179,26 @@ export function BookingsSection({ view, bookings, movies, shows, perform }: Sect
   const [search, setSearch] = useState("");
   const [movieFilter, setMovieFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");
-  const [reservationShowId, setReservationShowId] = useState("");
   const filtered = useMemo(() => bookings.filter((booking) =>
     `${booking.booking_code} ${booking.customer_email} ${booking.customer_phone || ""}`.toLowerCase().includes(search.toLowerCase())
     && (!movieFilter || booking.shows.movie_id === movieFilter)
     && (!dateFilter || booking.shows.date === dateFilter)
   ), [bookings, search, movieFilter, dateFilter]);
   const upcomingShows = useMemo(() => {
-    const today = new Date().toLocaleDateString("en-CA");
+    const now = new Date();
+    const today = now.toLocaleDateString("en-CA");
+    const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     return shows
-      .filter((show) => show.is_enabled && show.date >= today)
+      .filter((show) =>
+        show.is_enabled
+        && (show.date > today || (show.date === today && show.time.slice(0, 5) >= currentTime)),
+      )
       .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
   }, [shows]);
+  const upcomingMovies = useMemo(
+    () => [...new Map(upcomingShows.map((show) => [show.movie_id, show.movies])).entries()],
+    [upcomingShows],
+  );
 
   const exportCsv = () => {
     const rows = [["Booking code", "Movie", "Email", "Phone", "Seats", "Amount", "Status", "Created"], ...filtered.map((booking) => [booking.booking_code, booking.shows.movies.title, booking.customer_email, booking.customer_phone || "", booking.booking_seats.map((seat) => seat.seat_number).join(" "), String(booking.total_amount), booking.status, booking.created_at])];
@@ -213,28 +221,27 @@ export function BookingsSection({ view, bookings, movies, shows, perform }: Sect
         <section className="mt-6 max-w-xl">
           <Card>
             <h2 className="font-black text-white">Create an admin booking</h2>
-            <p className="mt-2 text-sm text-slate-400">Choose a show, select seats using the customer booking layout, and confirm without an online payment.</p>
-            <form
-              className="mt-5 space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (reservationShowId) navigate(`/admin/book/${reservationShowId}`);
-              }}
-            >
-              <select
-                required
-                value={reservationShowId}
-                onChange={(event) => setReservationShowId(event.target.value)}
-                className="w-full rounded-lg border border-slate-800 bg-slate-900 px-3 py-3 text-sm text-white"
-              >
-                <option value="">Select an upcoming show</option>
-                {upcomingShows.map((show) => (
-                  <option key={show.id} value={show.id}>{show.date} {show.time.slice(0, 5)} · {show.movies.title}</option>
-                ))}
-              </select>
-              {upcomingShows.length === 0 && <p className="text-sm text-slate-500">No enabled upcoming shows are available.</p>}
-              <Button type="submit" disabled={!reservationShowId} className="w-full">Choose seats</Button>
-            </form>
+            <p className="mt-2 text-sm text-slate-400">Choose the movie, then select its day and time before reserving seats without an online payment.</p>
+            <div className="mt-5 space-y-3">
+              {upcomingMovies.map(([movieId, movie]) => (
+                <button
+                  key={movieId}
+                  type="button"
+                  onClick={() => navigate(`/admin/showtimes/${movieId}`)}
+                  className="flex w-full items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-left transition hover:border-violet-500/60 hover:bg-violet-500/10"
+                >
+                  {movie.poster_url && <img src={movie.poster_url} alt="" className="h-16 w-11 rounded-md object-cover" />}
+                  <span className="min-w-0 flex-1">
+                    <strong className="block truncate text-sm text-white">{movie.title}</strong>
+                    <span className="mt-1 block text-xs text-slate-400">
+                      {upcomingShows.filter((show) => show.movie_id === movieId).length} showtimes
+                    </span>
+                  </span>
+                  <span className="text-xs font-bold text-violet-300">Choose showtime</span>
+                </button>
+              ))}
+              {upcomingMovies.length === 0 && <p className="text-sm text-slate-500">No enabled upcoming shows are available.</p>}
+            </div>
           </Card>
         </section>
       )}

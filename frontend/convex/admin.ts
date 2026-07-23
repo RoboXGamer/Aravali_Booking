@@ -545,14 +545,35 @@ export const checkIn = mutation({
   args: { bookingCode: v.string(), now: v.number() },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
+    const bookingCode = args.bookingCode.trim().toUpperCase();
     const booking = await ctx.db.query("bookings")
-      .withIndex("by_bookingCode", (q) => q.eq("bookingCode", args.bookingCode.trim().toUpperCase())).unique();
-    if (!booking) throw new Error("Ticket not found.");
-    if (booking.status !== "confirmed") throw new Error(`Ticket is ${booking.status}.`);
-    if (booking.isCheckedIn) throw new Error("Ticket has already been used.");
+      .withIndex("by_bookingCode", (q) => q.eq("bookingCode", bookingCode)).unique();
+    if (!booking) {
+      return {
+        status: "not_found" as const,
+        booking_code: bookingCode,
+      };
+    }
+    if (booking.status === "cancelled") {
+      return {
+        status: "cancelled" as const,
+        booking_code: booking.bookingCode,
+        customer_name: booking.customerName,
+      };
+    }
+    if (booking.isCheckedIn) {
+      return {
+        status: "already_checked_in" as const,
+        booking_code: booking.bookingCode,
+        customer_name: booking.customerName,
+        checked_in_at: booking.checkedInAt
+          ? new Date(booking.checkedInAt).toISOString()
+          : null,
+      };
+    }
     await ctx.db.patch("bookings", booking._id, { isCheckedIn: true, checkedInAt: args.now });
     return {
-      status: "success",
+      status: "success" as const,
       booking_code: booking.bookingCode,
       customer_name: booking.customerName,
       checked_in_at: new Date(args.now).toISOString(),

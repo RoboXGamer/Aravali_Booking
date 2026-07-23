@@ -7,6 +7,7 @@ import { AdminLogin } from "./pages/AdminLogin";
 import { Checkout } from "./pages/Checkout";
 import { Confirmation } from "./pages/Confirmation";
 import { LandingPage } from "./pages/LandingPage";
+import { ShowtimeSelection } from "./pages/ShowtimeSelection";
 import { TicketBooking } from "./pages/TicketBooking";
 
 function AppLayout() {
@@ -15,10 +16,12 @@ function AppLayout() {
       <main className="flex-grow">
         <Routes>
             <Route path="/" element={<LandingPage />} />
+            <Route path="/showtimes/:movie_id" element={<ShowtimeSelection />} />
             <Route path="/book/:event_id" element={<TicketBooking />} />
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/confirmation/:booking_code" element={<Confirmation />} />
             <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/admin/showtimes/:movie_id" element={<AdminGuard><ShowtimeSelection adminMode /></AdminGuard>} />
             <Route path="/admin/book/:event_id" element={<AdminGuard><TicketBooking adminMode /></AdminGuard>} />
             <Route path="/admin" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
             <Route path="/admin/:section" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
