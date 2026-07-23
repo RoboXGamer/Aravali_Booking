@@ -103,7 +103,11 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
           now: Date.now(),
         });
         sessionStorage.setItem(`aravalli.booking.email.${booking.bookingCode}`, booking.email);
-        navigate(`/confirmation/${booking.bookingCode}`, { state: { email: booking.email } });
+        const returnTo = "/admin/bookings/reservations";
+        sessionStorage.setItem(`aravalli.booking.returnTo.${booking.bookingCode}`, returnTo);
+        navigate(`/confirmation/${booking.bookingCode}`, {
+          state: { email: booking.email, returnTo },
+        });
         return;
       }
 

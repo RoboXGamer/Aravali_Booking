@@ -11,6 +11,7 @@ import "../confirmation.css";
 interface ConfirmationState {
   booking?: Booking;
   email?: string;
+  returnTo?: string;
 }
 
 function triggerDownload(url: string, filename: string) {
@@ -63,6 +64,11 @@ export function Confirmation() {
   const navigate = useNavigate();
   const routeState = (location.state || {}) as ConfirmationState;
   const storedEmail = booking_code ? sessionStorage.getItem(`aravalli.booking.email.${booking_code}`) : null;
+  const storedReturnTo = booking_code ? sessionStorage.getItem(`aravalli.booking.returnTo.${booking_code}`) : null;
+  const requestedReturnTo = routeState.returnTo || storedReturnTo;
+  const returnTo = requestedReturnTo === "/admin/bookings/reservations"
+    ? requestedReturnTo
+    : "/";
   const email = routeState.email || storedEmail || "";
   const fetchedBooking = useQuery(
     api.bookings.getByCode,
@@ -113,7 +119,7 @@ export function Confirmation() {
         <Search className="mx-auto h-8 w-8 text-[rgb(var(--booking-accent-text))]" />
         <h1 className="mt-4 text-2xl font-black text-white">Retrieve your booking</h1>
         <p className="mt-2 text-slate-400">{error || "Use your booking code and email address to reopen this ticket."}</p>
-        <Link to="/"><Button className="mt-6">Return home</Button></Link>
+        <Link to={returnTo}><Button className="mt-6">{returnTo.startsWith("/admin") ? "Return to reservations" : "Return home"}</Button></Link>
       </div>
     );
   }
@@ -136,7 +142,12 @@ export function Confirmation() {
     <div className="ticket-page">
       <div className="ticket-shell">
         <header className="ticket-page-header">
-          <button type="button" onClick={() => navigate("/")} aria-label="Back to home" className="ticket-header-button ticket-back-button">
+          <button
+            type="button"
+            onClick={() => navigate(returnTo)}
+            aria-label={returnTo.startsWith("/admin") ? "Back to admin reservations" : "Back to home"}
+            className="ticket-header-button ticket-back-button"
+          >
             <ArrowLeft />
           </button>
           <h1>Your Ticket</h1>
