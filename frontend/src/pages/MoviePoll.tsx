@@ -1,10 +1,11 @@
-import { ArrowRight, CheckCircle2, Clock3, Popcorn, Trophy } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock3, Popcorn, Trophy, WifiOff } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import { Spinner } from "../components/common/Spinner";
+import { useLoadingTimeout } from "../hooks/useLoadingTimeout";
 
 const VISITOR_KEY = "aravalli.poll.visitor";
 
@@ -26,6 +27,20 @@ function formatRemaining(milliseconds: number): string {
   return `${hours}h ${minutes}m`;
 }
 
+function PollHeader({ status }: { status: ReactNode }) {
+  return (
+    <header className="movie-poll-header">
+      <div className="movie-poll-heading">
+        <Popcorn className="movie-poll-icon" strokeWidth={1.8} />
+        <h1>NEXT WEEK&apos;S MOVIE POLL</h1>
+        <span className="movie-poll-divider" />
+        <p>Vote for what we should screen next week</p>
+      </div>
+      <div className="movie-poll-desktop-timer"><Clock3 />{status}</div>
+    </header>
+  );
+}
+
 export function MoviePoll() {
   const visitorId = useMemo(getVisitorId, []);
   const data = useQuery(api.polls.getCurrent, { visitorId });
@@ -33,6 +48,7 @@ export function MoviePoll() {
   const [votingOption, setVotingOption] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
+  const loadingTimedOut = useLoadingTimeout(data === undefined);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30000);
@@ -51,15 +67,55 @@ export function MoviePoll() {
     }
   };
 
-  if (data === undefined) return <div className="flex min-h-[40vh] items-center justify-center"><Spinner size="lg" /></div>;
+  if (data === undefined && !loadingTimedOut) {
+    return (
+      <section className="movie-poll-section" aria-label="Loading movie poll">
+        <div className="movie-poll-shell">
+          <PollHeader status={<span>Loading poll</span>} />
+          <div className="movie-poll-grid">
+            {[0, 1, 2].map((item) => (
+              <article key={item} className="movie-poll-option movie-poll-option-skeleton">
+                <span className="poll-skeleton-line poll-skeleton-title" />
+                <span className="poll-skeleton-line poll-skeleton-button" />
+              </article>
+            ))}
+          </div>
+          <footer className="movie-poll-mobile-timer"><Clock3 />Loading poll</footer>
+        </div>
+      </section>
+    );
+  }
+
+  if (data === undefined) {
+    return (
+      <section className="movie-poll-section">
+        <div className="movie-poll-shell">
+          <PollHeader status={<strong>Unavailable</strong>} />
+          <div className="movie-poll-empty">
+            <span className="movie-poll-empty-icon"><WifiOff /></span>
+            <h2>Unable to load the movie poll</h2>
+            <p>We will reconnect automatically when the booking service is available.</p>
+          </div>
+          <footer className="movie-poll-mobile-timer"><Clock3 />Unavailable</footer>
+        </div>
+      </section>
+    );
+  }
 
   if (!data?.poll) {
     return (
-      <div className="mx-auto max-w-xl px-5 py-16 text-center">
-        <Trophy className="mx-auto h-8 w-8 text-white" />
-        <h1 className="mt-4 text-xl font-bold text-white">No poll is open</h1>
-        {error && <p className="mt-4 text-sm text-rose-300">{error}</p>}
-      </div>
+      <section className="movie-poll-section">
+        <div className="movie-poll-shell">
+          <PollHeader status={<strong>No active poll</strong>} />
+          <div className="movie-poll-empty">
+            <span className="movie-poll-empty-icon"><Trophy /></span>
+            <h2>No upcoming movie poll</h2>
+            <p>The next audience vote will appear here when it opens.</p>
+          </div>
+          {error && <p className="movie-poll-error">{error}</p>}
+          <footer className="movie-poll-mobile-timer"><Clock3 />No active poll</footer>
+        </div>
+      </section>
     );
   }
 
@@ -73,15 +129,7 @@ export function MoviePoll() {
   return (
     <section className="movie-poll-section">
       <div className="movie-poll-shell">
-        <header className="movie-poll-header">
-          <div className="movie-poll-heading">
-            <Popcorn className="movie-poll-icon" strokeWidth={1.8} />
-            <h1>PICK YOUR MOVIE</h1>
-            <span className="movie-poll-divider" />
-            <p>Which one should we watch?</p>
-          </div>
-          <div className="movie-poll-desktop-timer"><Clock3 />{timer}</div>
-        </header>
+        <PollHeader status={timer} />
 
         {!open && winner && (
           <div className="movie-poll-message"><Trophy /><span>Winner: <strong>{winner.title}</strong></span></div>
@@ -92,15 +140,24 @@ export function MoviePoll() {
           {options.map((option, index) => {
             const selected = selectedId === option.id;
             const letter = String.fromCharCode(65 + index);
+            const posterUrl = option.movie.poster_url || "https://placehold.co/600x900/16191D/FFFFFF?text=Movie";
             return (
               <article key={option.id} className={`movie-poll-option ${selected ? "is-selected" : ""}`}>
-                <img
-                  src={option.movie.poster_url || "https://placehold.co/600x900/16191D/FFFFFF?text=Movie"}
-                  alt={option.movie.title}
-                  className="movie-poll-poster"
-                />
-                <div className="movie-poll-shade" />
-                <div className="movie-poll-letter">{letter}</div>
+                <div className="movie-poll-media">
+                  <img
+                    src={posterUrl}
+                    alt=""
+                    aria-hidden="true"
+                    className="movie-poll-poster-backdrop"
+                  />
+                  <img
+                    src={posterUrl}
+                    alt={option.movie.title}
+                    className="movie-poll-poster"
+                  />
+                  <div className="movie-poll-shade" />
+                  <div className="movie-poll-letter">{letter}</div>
+                </div>
 
                 <div className="movie-poll-action-wrap">
                   <p className="movie-poll-title">{option.movie.title}</p>

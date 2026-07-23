@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "convex": "convex",
-    "convex:dev": "convex dev"
+    "convex:dev": "convex dev",
+    "convex:seed": "convex run seed:seedMovies --push"
   },
   "dependencies": {
     "@convex-dev/better-auth": "^0.12.5",

@@ -19,6 +19,7 @@ import type * as lib from "../lib.js";
 import type * as maintenance from "../maintenance.js";
 import type * as payments from "../payments.js";
 import type * as polls from "../polls.js";
+import type * as seed from "../seed.js";
 import type * as tickets from "../tickets.js";
 
 import type {
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   maintenance: typeof maintenance;
   payments: typeof payments;
   polls: typeof polls;
+  seed: typeof seed;
   tickets: typeof tickets;
 }>;
 
