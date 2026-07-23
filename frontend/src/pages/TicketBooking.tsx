@@ -1,6 +1,6 @@
-import { ArrowLeft, CalendarDays, ChevronRight, Clock3, MapPin, ShieldCheck, Ticket, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, ChevronRight, CircleAlert, Clock3, MapPin, ShieldCheck, Ticket, X } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../convex/_generated/api";
@@ -29,6 +29,8 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
+  const toastTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!availability) return;
@@ -36,6 +38,10 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
     const availableIds = new Set<string>(availability.seats.filter((seat) => seat.availability === "available").map((seat) => seat.id));
     setSelectedIds((current) => current.filter((id) => availableIds.has(id)));
   }, [availability]);
+
+  useEffect(() => () => {
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+  }, []);
 
   const selectedSeats = useMemo(() => seats.filter((seat) => selectedIds.includes(seat.id)), [seats, selectedIds]);
   const selectedTicketCategory = settings?.ticket_categories.find((category) => category.id === selectedCategory) ?? null;
@@ -55,6 +61,29 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
     setSelectedIds((current) => physicalCategory
       ? current.filter((id) => seats.find((seat) => seat.id === id)?.category_name === physicalCategory)
       : []);
+  };
+
+  const showCategoryGuidance = (seat: Seat) => {
+    const message = selectedCategory
+      ? `This seat is in the ${seat.category_name} section. Choose a matching category to unlock it.`
+      : "Choose a ticket category first, then select your seats.";
+    setToast(message);
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(""), 3500);
+
+    window.requestAnimationFrame(() => {
+      const selectors = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-category-selector]"),
+      );
+      const selector = selectors.find((element) => element.getClientRects().length > 0);
+      if (!selector) return;
+      selector.scrollIntoView({ behavior: "smooth", block: "center" });
+      selector.classList.remove("is-attention");
+      void selector.offsetWidth;
+      selector.classList.add("is-attention");
+      window.setTimeout(() => selector.classList.remove("is-attention"), 1400);
+      window.setTimeout(() => selector.querySelector<HTMLButtonElement>("button")?.focus(), 450);
+    });
   };
 
   const beginCheckout = async (event: FormEvent) => {
@@ -129,6 +158,7 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
                 selectedCategory={selectedCategory}
                 onCategorySelect={chooseCategory}
                 onSeatSelect={toggleSeat}
+                onCategoryRequired={showCategoryGuidance}
                 maxSelectable={settings.max_seats_per_booking}
               />
             </section>
@@ -168,6 +198,20 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
           </button>
         </footer>
       </main>
+
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed left-1/2 top-4 z-[80] flex w-[calc(100%-32px)] max-w-md -translate-x-1/2 items-start gap-3 rounded-xl border border-violet-400/35 bg-slate-950/95 px-4 py-3 text-sm font-semibold text-slate-100 shadow-2xl shadow-black/50 backdrop-blur"
+        >
+          <CircleAlert className="mt-0.5 h-5 w-5 shrink-0 text-violet-400" />
+          <span>{toast}</span>
+          <button type="button" onClick={() => setToast("")} aria-label="Dismiss message" className="ml-auto text-slate-500 hover:text-white">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {detailsOpen && (
         <div className="booking-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailsOpen(false); }}>

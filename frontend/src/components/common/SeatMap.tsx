@@ -27,7 +27,7 @@ export function SeatControls({
         <span><i className="premium" />Premium</span>
       </div>
 
-      <div className="booking-category-options" aria-label="Choose seat category">
+      <div className="booking-category-options" aria-label="Choose seat category" data-category-selector>
         {categories.map((category) => (
           <button
             key={category.id}
@@ -57,10 +57,11 @@ interface SeatMapProps {
   selectedCategory: BookingCategory | null;
   onCategorySelect: (category: BookingCategory | null) => void;
   onSeatSelect: (seatId: string) => void;
+  onCategoryRequired: (seat: Seat) => void;
   maxSelectable: number;
 }
 
-export function SeatMap({ seats, selectedSeatIds, categories, selectedCategory, onCategorySelect, onSeatSelect, maxSelectable }: SeatMapProps) {
+export function SeatMap({ seats, selectedSeatIds, categories, selectedCategory, onCategorySelect, onSeatSelect, onCategoryRequired, maxSelectable }: SeatMapProps) {
   const supportedCategories: Seat["category_name"][] = ["Gold", "Silver"];
   const selectedTicketCategory = categories.find((category) => category.id === selectedCategory) ?? null;
   const sections = useMemo(() => {
@@ -90,6 +91,10 @@ export function SeatMap({ seats, selectedSeatIds, categories, selectedCategory, 
 
   const selectSeat = (seat: Seat) => {
     if (seat.availability !== "available") return;
+    if (!selectedTicketCategory || seat.category_name !== selectedTicketCategory.seat_category) {
+      onCategoryRequired(seat);
+      return;
+    }
     if (!selectedSeatIds.includes(seat.id) && selectedSeatIds.length >= maxSelectable) return;
     onSeatSelect(seat.id);
   };
@@ -132,7 +137,8 @@ export function SeatMap({ seats, selectedSeatIds, categories, selectedCategory, 
                                 key={seat.id}
                                 type="button"
                                 onClick={() => selectSeat(seat)}
-                                disabled={unavailable || categoryLocked}
+                                disabled={unavailable}
+                                aria-disabled={categoryLocked || unavailable}
                                 title={categoryLocked ? selectedCategory ? `${seat.category_name} seats are locked while ${selectedCategory} is selected` : "Select a ticket category first" : `${seat.seat_number} · ${selectedCategory} · INR ${selectedTicketCategory?.price} · ${seat.availability}`}
                                 className={`booking-seat ${selected ? "is-selected" : unavailable ? "is-booked" : categoryLocked ? "is-category-locked" : premium ? "is-premium" : "is-available"}`}
                                 aria-label={`${seat.seat_number}, ${categoryLocked ? "different category locked" : seat.availability}`}

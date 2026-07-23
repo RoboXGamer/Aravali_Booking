@@ -417,6 +417,11 @@
 .booking-category-options button { min-width: 76px; padding: 8px 14px; border: 1px solid rgb(var(--booking-control-border)); border-radius: 7px; background: rgb(var(--booking-control)); color: #94a3b8; font-size: 10px; font-weight: 800; transition: border-color .15s ease,background .15s ease,color .15s ease; }
 .booking-category-options button:hover { border-color: #8b5cf6; color: white; }
 .booking-category-options button.is-active { border-color: rgb(var(--booking-accent-end)); background: linear-gradient(110deg,rgb(var(--booking-accent-start)),rgb(var(--booking-accent-end))); color: white; box-shadow: inset 0 0 18px rgb(var(--booking-selected-end) / .2); }
+.booking-category-options.is-attention button { animation: booking-category-attention .7s ease-in-out 2; }
+@keyframes booking-category-attention {
+  0%,100% { border-color: rgb(var(--booking-control-border)); box-shadow: none; }
+  50% { border-color: rgb(var(--booking-accent-text)); box-shadow: 0 0 0 3px rgb(var(--booking-selected-end) / .18),0 0 24px rgb(var(--booking-selected-end) / .28); color: white; }
+}
 .booking-seat-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; margin-bottom: 21px; color: #94a3b8; font-size: 9px; }
 .booking-seat-legend span { display: flex; align-items: center; gap: 6px; }
 .booking-seat-legend i { display: block; width: 10px; height: 10px; border-radius: 2px; background: #1c2634; }
@@ -438,7 +443,7 @@
 .booking-seat.is-selected { border-color: rgb(var(--booking-accent-text)); background: linear-gradient(135deg,rgb(var(--booking-selected-start)),rgb(var(--booking-selected-end))); color: white; box-shadow: 0 0 18px rgb(var(--color-brand) / .55); }
 .booking-seat.is-premium { border-color: #b9953b; background: #d2ae50; color: #17130a; }
 .booking-seat.is-booked { cursor: not-allowed; border-color: #637083; background: #a7b0bd; color: #293241; }
-.booking-seat.is-category-locked { cursor: not-allowed; border-color: #202b3a; background: #09111d; color: #374151; opacity: .42; }
+.booking-seat.is-category-locked { cursor: help; border-color: #202b3a; background: #09111d; color: #374151; opacity: .42; }
 .booking-scroll-hint { display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 18px; color: #9ca3af; font-size: 11px; }
 .booking-scroll-hint svg { width: 18px; height: 18px; }
 .booking-inline-error { margin: 0 24px 14px; padding: 10px 12px; border: 1px solid rgba(244,63,94,.28); border-radius: 8px; background: rgba(136,19,55,.14); color: #fda4af; font-size: 11px; }
