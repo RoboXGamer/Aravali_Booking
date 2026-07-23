@@ -1,4 +1,5 @@
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 
 type DatabaseCtx = QueryCtx | MutationCtx;
 
@@ -36,6 +37,12 @@ export async function ensureSettings(ctx: MutationCtx) {
 }
 
 export const roundMoney = (value: number) => Math.round(value * 100) / 100;
+
+export async function moviePosterUrl(ctx: DatabaseCtx, movie: Doc<"movies">) {
+  return movie.posterStorageId
+    ? await ctx.storage.getUrl(movie.posterStorageId)
+    : null;
+}
 
 export function normalizeEmail(value: string) {
   const email = value.trim().toLowerCase();

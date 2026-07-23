@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
+import { moviePosterUrl } from "./lib";
 
 async function loadPoll(ctx: QueryCtx, pollId: Id<"polls">, visitorId: string | null) {
   const poll = await ctx.db.get("polls", pollId);
@@ -23,7 +24,7 @@ async function loadPoll(ctx: QueryCtx, pollId: Id<"polls">, visitorId: string | 
         id: movie._id,
         title: movie.title,
         description: movie.description,
-        poster_url: movie.posterUrl,
+        poster_url: await moviePosterUrl(ctx, movie),
         duration_minutes: movie.durationMinutes,
       },
     });
@@ -50,7 +51,7 @@ async function loadPoll(ctx: QueryCtx, pollId: Id<"polls">, visitorId: string | 
         id: winningMovie._id,
         title: winningMovie.title,
         description: winningMovie.description,
-        poster_url: winningMovie.posterUrl,
+        poster_url: await moviePosterUrl(ctx, winningMovie),
         duration_minutes: winningMovie.durationMinutes,
       } : null,
     },

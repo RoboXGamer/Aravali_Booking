@@ -1,4 +1,4 @@
-import { BarChart3, CalendarDays, Download, LayoutGrid, ScanLine, Search, Ticket, Users } from "lucide-react";
+import { BarChart3, CalendarDays, Download, ImageUp, LayoutGrid, ScanLine, Search, Ticket, Users } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -15,6 +15,7 @@ export interface Movie {
   description: string;
   duration_minutes: number;
   poster_url: string;
+  poster_storage_id: string | null;
 }
 
 export interface ShowRow {
@@ -135,18 +136,69 @@ export function OverviewSection({ dashboard, onOpenProgramming }: { dashboard: D
 export type ProgrammingView = "schedule" | "movies" | "poll";
 
 export function ProgrammingSection({ view, movies, shows, polls, saving, perform }: SectionProps & { view: ProgrammingView; movies: Movie[]; shows: ShowRow[]; polls: AdminPoll[] }) {
-  const [movieForm, setMovieForm] = useState({ title: "", description: "", duration_minutes: "", poster_url: "" });
+  const [movieForm, setMovieForm] = useState({ title: "", description: "", duration_minutes: "" });
   const [editingMovie, setEditingMovie] = useState<string | null>(null);
+  const [posterFile, setPosterFile] = useState<File | null>(null);
+  const [posterPreview, setPosterPreview] = useState("");
+  const [posterError, setPosterError] = useState("");
+  const [posterInputKey, setPosterInputKey] = useState(0);
   const [showForm, setShowForm] = useState({ movie_id: movies[0]?.id ?? "", date: "", time: "19:00" });
 
   const saveMovie = async (event: FormEvent) => {
     event.preventDefault();
-    const payload = { ...movieForm, duration_minutes: Number(movieForm.duration_minutes) };
-    const succeeded = await perform(() => editingMovie ? adminBackend.movies.update(editingMovie, payload) : adminBackend.movies.create(payload));
-    if (succeeded) {
-      setMovieForm({ title: "", description: "", duration_minutes: "", poster_url: "" });
-      setEditingMovie(null);
+    const existingMovie = editingMovie ? movies.find((movie) => movie.id === editingMovie) : null;
+    if (!posterFile && !existingMovie?.poster_storage_id) {
+      setPosterError("Choose a poster image.");
+      return;
     }
+    setPosterError("");
+    let uploadedStorageId: string | null = null;
+    const succeeded = await perform(async () => {
+      if (posterFile) uploadedStorageId = await adminBackend.movies.uploadPoster(posterFile);
+      const posterStorageId = uploadedStorageId ?? existingMovie?.poster_storage_id;
+      if (!posterStorageId) throw new Error("Choose a poster image.");
+      const payload = {
+        ...movieForm,
+        duration_minutes: Number(movieForm.duration_minutes),
+        poster_storage_id: posterStorageId,
+      };
+      try {
+        return editingMovie
+          ? await adminBackend.movies.update(editingMovie, payload)
+          : await adminBackend.movies.create(payload);
+      } catch (reason) {
+        if (uploadedStorageId) await adminBackend.movies.discardPoster(uploadedStorageId);
+        throw reason;
+      }
+    });
+    if (succeeded) {
+      if (posterPreview.startsWith("blob:")) URL.revokeObjectURL(posterPreview);
+      setMovieForm({ title: "", description: "", duration_minutes: "" });
+      setEditingMovie(null);
+      setPosterFile(null);
+      setPosterPreview("");
+      setPosterInputKey((key) => key + 1);
+    }
+  };
+
+  const choosePoster = (file: File | null) => {
+    if (posterPreview.startsWith("blob:")) URL.revokeObjectURL(posterPreview);
+    setPosterError("");
+    if (!file) {
+      setPosterFile(null);
+      setPosterPreview("");
+      return;
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setPosterError("Use a JPEG, PNG, or WebP image.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setPosterError("Poster must be 10 MB or smaller.");
+      return;
+    }
+    setPosterFile(file);
+    setPosterPreview(URL.createObjectURL(file));
   };
 
   return (
@@ -159,12 +211,42 @@ export function ProgrammingSection({ view, movies, shows, polls, saving, perform
 
       {view === "schedule" && <section className="mt-6 space-y-6">
         <Card><h2 className="font-black text-white">Schedule show</h2><form className="mt-4 grid gap-3 sm:grid-cols-4" onSubmit={(event) => { event.preventDefault(); void perform(() => adminBackend.shows.create({ ...showForm, movie_id: showForm.movie_id || movies[0]?.id || "", is_enabled: true })); }}><select required value={showForm.movie_id || movies[0]?.id || ""} onChange={(event) => setShowForm({ ...showForm, movie_id: event.target.value })} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-3 text-sm text-white sm:col-span-2">{movies.map((movie) => <option key={movie.id} value={movie.id}>{movie.title}</option>)}</select><Input type="date" required value={showForm.date} onChange={(event) => setShowForm({ ...showForm, date: event.target.value })} /><Input type="time" required value={showForm.time} onChange={(event) => setShowForm({ ...showForm, time: event.target.value })} /><Button type="submit" disabled={saving || movies.length === 0} className="sm:col-span-4">Add show</Button></form></Card>
-        <Card><div className="divide-y divide-slate-800">{shows.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No shows scheduled yet.</p>}{shows.map((show) => <div key={show.id} className="flex flex-col justify-between gap-3 py-3 sm:flex-row sm:items-center"><div><p className="font-bold text-white">{show.movies.title}</p><p className="text-xs text-slate-500">{show.date} · {show.time.slice(0, 5)} · {show.occupancy_percentage ?? 0}% occupied ({show.sold_seats ?? 0}/{show.capacity ?? 0})</p></div><div className="flex gap-2"><Button size="sm" variant="secondary" onClick={() => void perform(() => adminBackend.shows.setEnabled(show.id, !show.is_enabled))}>{show.is_enabled ? "Disable" : "Enable"}</Button><Button size="sm" variant="danger" onClick={() => void perform(() => adminBackend.shows.delete(show.id))}>Delete</Button></div></div>)}</div></Card>
+        <Card><div className="divide-y divide-slate-800">{shows.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No shows scheduled yet.</p>}{shows.map((show) => <div key={show.id} className="flex flex-col justify-between gap-3 py-3 sm:flex-row sm:items-center"><div><p className="font-bold text-white">{show.movies.title}</p><p className="text-xs text-slate-500">{show.date} · {show.time.slice(0, 5)} · {show.occupancy_percentage ?? 0}% occupied ({show.sold_seats ?? 0}/{show.capacity ?? 0})</p></div><div className="flex gap-2"><Button size="sm" variant="secondary" onClick={() => void perform(() => adminBackend.shows.setEnabled(show.id, !show.is_enabled))}>{show.is_enabled ? "Disable" : "Enable"}</Button><Button size="sm" variant="danger" onClick={() => { if (window.confirm("Delete this show? Cancelled tickets and all related booking records will also be permanently deleted.")) void perform(() => adminBackend.shows.delete(show.id)); }}>Delete</Button></div></div>)}</div></Card>
       </section>}
 
       {view === "movies" && <section className="mt-6 grid gap-7 lg:grid-cols-[380px_1fr]">
-        <Card><h2 className="font-black text-white">{editingMovie ? "Edit movie" : "Add movie"}</h2><form onSubmit={(event) => void saveMovie(event)} className="mt-5 space-y-3"><Input label="Movie name" required value={movieForm.title} onChange={(event) => setMovieForm({ ...movieForm, title: event.target.value })} /><Input label="Description" required value={movieForm.description} onChange={(event) => setMovieForm({ ...movieForm, description: event.target.value })} /><Input label="Duration (minutes)" type="number" min="1" required value={movieForm.duration_minutes} onChange={(event) => setMovieForm({ ...movieForm, duration_minutes: event.target.value })} /><Input label="Poster URL" type="url" required value={movieForm.poster_url} onChange={(event) => setMovieForm({ ...movieForm, poster_url: event.target.value })} /><Button type="submit" disabled={saving} className="w-full">{editingMovie ? "Save movie" : "Add movie"}</Button></form></Card>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{movies.length === 0 && <Card><p className="text-sm text-slate-500">No movies in the library yet.</p></Card>}{movies.map((movie) => <Card key={movie.id} className="p-0"><img src={movie.poster_url} className="h-44 w-full object-cover" alt="" /><div className="p-4"><h3 className="font-black text-white">{movie.title}</h3><p className="mt-1 line-clamp-2 text-xs text-slate-500">{movie.description}</p><p className="mt-2 text-xs text-slate-400">{movie.duration_minutes} min</p><div className="mt-4 flex gap-2"><Button size="sm" variant="secondary" onClick={() => { setEditingMovie(movie.id); setMovieForm({ ...movie, duration_minutes: String(movie.duration_minutes) }); }}>Edit</Button><Button size="sm" variant="danger" onClick={() => void perform(() => adminBackend.movies.delete(movie.id))}>Delete</Button></div></div></Card>)}</div>
+        <Card>
+          <h2 className="font-black text-white">{editingMovie ? "Edit movie" : "Add movie"}</h2>
+          <form onSubmit={(event) => void saveMovie(event)} className="mt-5 space-y-3">
+            <Input label="Movie name" required value={movieForm.title} onChange={(event) => setMovieForm({ ...movieForm, title: event.target.value })} />
+            <Input label="Description" required value={movieForm.description} onChange={(event) => setMovieForm({ ...movieForm, description: event.target.value })} />
+            <Input label="Duration (minutes)" type="number" min="1" required value={movieForm.duration_minutes} onChange={(event) => setMovieForm({ ...movieForm, duration_minutes: event.target.value })} />
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-slate-300">Poster image</span>
+              <span className="flex min-h-32 cursor-pointer items-center gap-4 rounded-xl border border-dashed border-slate-700 bg-slate-900/70 p-3 transition hover:border-violet-500/70">
+                {posterPreview ? (
+                  <img src={posterPreview} alt="Poster preview" className="h-28 w-20 rounded-lg object-cover" />
+                ) : (
+                  <span className="grid h-28 w-20 place-items-center rounded-lg bg-slate-950 text-slate-600"><ImageUp className="h-7 w-7" /></span>
+                )}
+                <span className="min-w-0 text-sm text-slate-400">
+                  <strong className="block text-slate-200">{posterFile ? posterFile.name : editingMovie ? "Replace poster" : "Choose poster"}</strong>
+                  <span className="mt-1 block text-xs">JPEG, PNG or WebP · maximum 10 MB</span>
+                </span>
+              </span>
+              <input
+                key={posterInputKey}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="sr-only"
+                onChange={(event) => choosePoster(event.target.files?.[0] ?? null)}
+              />
+            </label>
+            {posterError && <p className="text-xs font-medium text-rose-400">{posterError}</p>}
+            <Button type="submit" disabled={saving} className="w-full">{editingMovie ? "Save movie" : "Add movie"}</Button>
+          </form>
+        </Card>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{movies.length === 0 && <Card><p className="text-sm text-slate-500">No movies in the library yet.</p></Card>}{movies.map((movie) => <Card key={movie.id} className="p-0"><img src={movie.poster_url} className="h-44 w-full object-cover" alt="" /><div className="p-4"><h3 className="font-black text-white">{movie.title}</h3><p className="mt-1 line-clamp-2 text-xs text-slate-500">{movie.description}</p><p className="mt-2 text-xs text-slate-400">{movie.duration_minutes} min</p><div className="mt-4 flex gap-2"><Button size="sm" variant="secondary" onClick={() => { if (posterPreview.startsWith("blob:")) URL.revokeObjectURL(posterPreview); setEditingMovie(movie.id); setMovieForm({ title: movie.title, description: movie.description, duration_minutes: String(movie.duration_minutes) }); setPosterFile(null); setPosterPreview(movie.poster_url); setPosterError(""); setPosterInputKey((key) => key + 1); }}>Edit</Button><Button size="sm" variant="danger" onClick={() => void perform(() => adminBackend.movies.delete(movie.id))}>Delete</Button></div></div></Card>)}</div>
       </section>}
 
       {view === "poll" && <PollManagement movies={movies} polls={polls} saving={saving} perform={perform} />}

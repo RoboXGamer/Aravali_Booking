@@ -2,7 +2,7 @@ import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
-import { ensureSettings, getSettings, normalizeEmail, requireAdmin, roundMoney } from "./lib";
+import { ensureSettings, getSettings, moviePosterUrl, normalizeEmail, requireAdmin, roundMoney } from "./lib";
 
 const bookingCategory = v.union(
   v.literal("Gold"),
@@ -455,7 +455,7 @@ export const getByCode = query({
         id: show._id,
         date: show.date,
         time: show.time,
-        movies: { title: movie.title, poster_url: movie.posterUrl },
+        movies: { title: movie.title, poster_url: await moviePosterUrl(ctx, movie) },
       },
       booking_seats: bookingSeats.map((seat) => ({
         id: seat._id,
@@ -486,7 +486,7 @@ export const getTicketData = internalQuery({
       customerEmail: booking.customerEmail,
       totalAmount: booking.totalAmount,
       movieTitle: movie.title,
-      posterUrl: movie.posterUrl,
+      posterUrl: await moviePosterUrl(ctx, movie),
       date: show.date,
       time: show.time,
       seats: seats.map((seat) => seat.seatNumber),

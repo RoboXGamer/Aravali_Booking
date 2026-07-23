@@ -6,7 +6,7 @@ export interface MovieInput {
   title: string;
   description: string;
   duration_minutes: number;
-  poster_url: string;
+  poster_storage_id: string;
 }
 
 export interface SeatInput {
@@ -25,7 +25,7 @@ const movieValues = (input: MovieInput) => ({
   title: input.title,
   description: input.description,
   durationMinutes: input.duration_minutes,
-  posterUrl: input.poster_url,
+  posterStorageId: input.poster_storage_id as Id<"_storage">,
 });
 
 const seatValues = (input: SeatInput) => ({
@@ -57,6 +57,24 @@ export const adminBackend = {
     create: (input: MovieInput) => convex.mutation(api.admin.createMovie, movieValues(input)),
     update: (id: string, input: MovieInput) => convex.mutation(api.admin.updateMovie, { movieId: id as Id<"movies">, ...movieValues(input) }),
     delete: (id: string) => convex.mutation(api.admin.deleteMovie, { movieId: id as Id<"movies"> }),
+    async uploadPoster(file: File) {
+      const uploadUrl = await convex.mutation(api.admin.generateMoviePosterUploadUrl);
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) throw new Error("Poster upload failed. Please try again.");
+      const payload = await response.json() as { storageId?: unknown };
+      if (typeof payload.storageId !== "string") {
+        throw new Error("Poster upload returned an invalid response.");
+      }
+      return payload.storageId;
+    },
+    discardPoster: (storageId: string) =>
+      convex.mutation(api.admin.discardMoviePoster, {
+        storageId: storageId as Id<"_storage">,
+      }),
   },
   shows: {
     create: (input: { movie_id: string; date: string; time: string; is_enabled: boolean }) =>

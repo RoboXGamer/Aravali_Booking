@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 
 import { query } from "./_generated/server";
+import { moviePosterUrl } from "./lib";
 
 function serializeShow(show: {
   _id: string;
@@ -11,7 +12,7 @@ function serializeShow(show: {
 }, movie: {
   title: string;
   description: string;
-  posterUrl: string;
+  posterUrl: string | null;
   durationMinutes: number;
 }) {
   return {
@@ -44,7 +45,12 @@ export const listUpcoming = query({
         && show.time.slice(0, 5) < args.currentTime
       ) continue;
       const movie = await ctx.db.get("movies", show.movieId);
-      if (movie) result.push(serializeShow(show, movie));
+      if (movie) {
+        result.push(serializeShow(show, {
+          ...movie,
+          posterUrl: await moviePosterUrl(ctx, movie),
+        }));
+      }
     }
     return result;
   },
@@ -72,18 +78,21 @@ export const listUpcomingByMovie = query({
           || (show.date === args.today && show.time.slice(0, 5) >= args.currentTime)
         ),
       )
-      .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`))
-      .map((show) => serializeShow(show, movie));
+      .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
+    const posterUrl = await moviePosterUrl(ctx, movie);
 
     return {
       movie: {
         id: movie._id,
         title: movie.title,
         description: movie.description,
-        poster_url: movie.posterUrl,
+        poster_url: posterUrl,
         duration_minutes: movie.durationMinutes,
       },
-      shows: upcomingShows,
+      shows: upcomingShows.map((show) => serializeShow(show, {
+        ...movie,
+        posterUrl,
+      })),
     };
   },
 });
@@ -95,6 +104,9 @@ export const getById = query({
     if (!show?.isEnabled) return null;
     const movie = await ctx.db.get("movies", show.movieId);
     if (!movie) return null;
-    return serializeShow(show, movie);
+    return serializeShow(show, {
+      ...movie,
+      posterUrl: await moviePosterUrl(ctx, movie),
+    });
   },
 });

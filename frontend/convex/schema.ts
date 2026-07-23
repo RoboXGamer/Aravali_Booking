@@ -14,7 +14,7 @@ export default defineSchema({
     title: v.string(),
     description: v.string(),
     durationMinutes: v.number(),
-    posterUrl: v.string(),
+    posterStorageId: v.optional(v.id("_storage")),
   }),
 
   shows: defineTable({

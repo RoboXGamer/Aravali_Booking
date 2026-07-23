@@ -1,9 +1,9 @@
 import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
-import type { QueryCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { ensureSettings, getSettings, requireAdmin } from "./lib";
+import { ensureSettings, getSettings, moviePosterUrl, requireAdmin } from "./lib";
 
 const nullableString = v.union(v.string(), v.null());
 const seatCategory = v.union(v.literal("Gold"), v.literal("Silver"));
@@ -11,8 +11,21 @@ const movieFields = {
   title: v.string(),
   description: v.string(),
   durationMinutes: v.number(),
-  posterUrl: v.string(),
+  posterStorageId: v.id("_storage"),
 };
+const moviePosterTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const maximumMoviePosterBytes = 10 * 1024 * 1024;
+
+async function validateMoviePoster(ctx: MutationCtx, storageId: Id<"_storage">) {
+  const metadata = await ctx.db.system.get("_storage", storageId);
+  if (!metadata) throw new Error("The uploaded poster could not be found. Upload it again.");
+  if (!metadata.contentType || !moviePosterTypes.has(metadata.contentType)) {
+    throw new Error("Poster must be a JPEG, PNG, or WebP image.");
+  }
+  if (metadata.size > maximumMoviePosterBytes) {
+    throw new Error("Poster must be 10 MB or smaller.");
+  }
+}
 const seatFields = {
   sectionName: v.string(),
   rowPrefix: v.string(),
@@ -25,12 +38,13 @@ const seatFields = {
   isVisible: v.boolean(),
 };
 
-const serializeMovie = (movie: Doc<"movies">) => ({
+const serializeMovie = async (ctx: QueryCtx, movie: Doc<"movies">) => ({
   id: movie._id,
   title: movie.title,
   description: movie.description,
   duration_minutes: movie.durationMinutes,
-  poster_url: movie.posterUrl,
+  poster_storage_id: movie.posterStorageId ?? null,
+  poster_url: await moviePosterUrl(ctx, movie) ?? "",
 });
 
 const serializeSeat = (seat: Doc<"seats">) => ({
@@ -56,7 +70,7 @@ async function showDetails(ctx: QueryCtx, show: Doc<"shows">, capacity: number) 
     date: show.date,
     time: show.time,
     is_enabled: show.isEnabled,
-    movies: serializeMovie(movie),
+    movies: await serializeMovie(ctx, movie),
     sold_seats: soldSeats,
     capacity,
     occupancy_percentage: capacity ? Math.min(100, Math.round(soldSeats / capacity * 1000) / 10) : 0,
@@ -76,7 +90,7 @@ async function pollDetails(ctx: QueryCtx, poll: Doc<"polls">) {
         id: option._id,
         movie_id: option.movieId,
         votes_count: option.votesCount,
-        movies: serializeMovie(movie),
+        movies: await serializeMovie(ctx, movie),
       });
     }
   }
@@ -123,7 +137,7 @@ export const getSection = query({
         occupancy_percentage: number;
         upcoming_shows: ShowOutput[];
       } | null,
-      movies: [] as ReturnType<typeof serializeMovie>[],
+      movies: [] as Array<Awaited<ReturnType<typeof serializeMovie>>>,
       shows: [] as ShowOutput[],
       seats: [] as ReturnType<typeof serializeSeat>[],
       bookings: [] as BookingOutput[],
@@ -157,7 +171,7 @@ export const getSection = query({
       .filter((show): show is NonNullable<typeof show> => Boolean(show));
     const showMap = new Map(showRows.map((show) => [show.id, show]));
 
-    result.movies = movieDocs.map(serializeMovie);
+    result.movies = await Promise.all(movieDocs.map((movie) => serializeMovie(ctx, movie)));
     result.shows = showRows;
     result.seats = seatDocs.map(serializeSeat);
 
@@ -258,10 +272,32 @@ export const initializeSettings = mutation({
   },
 });
 
+export const generateMoviePosterUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const discardMoviePoster = mutation({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const movie = await ctx.db
+      .query("movies")
+      .filter((q) => q.eq(q.field("posterStorageId"), args.storageId))
+      .first();
+    if (!movie) await ctx.storage.delete(args.storageId);
+    return null;
+  },
+});
+
 export const createMovie = mutation({
   args: movieFields,
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
+    await validateMoviePoster(ctx, args.posterStorageId);
     return await ctx.db.insert("movies", args);
   },
 });
@@ -270,7 +306,13 @@ export const updateMovie = mutation({
   args: { movieId: v.id("movies"), ...movieFields },
   handler: async (ctx, { movieId, ...values }) => {
     await requireAdmin(ctx);
+    const existing = await ctx.db.get("movies", movieId);
+    if (!existing) throw new Error("Movie not found.");
+    await validateMoviePoster(ctx, values.posterStorageId);
     await ctx.db.replace("movies", movieId, values);
+    if (existing.posterStorageId && existing.posterStorageId !== values.posterStorageId) {
+      await ctx.storage.delete(existing.posterStorageId);
+    }
     return null;
   },
 });
@@ -283,7 +325,9 @@ export const deleteMovie = mutation({
     if (show) throw new Error("Delete this movie's shows before deleting the movie.");
     const pollOption = await ctx.db.query("pollOptions").filter((q) => q.eq(q.field("movieId"), args.movieId)).first();
     if (pollOption) throw new Error("Remove this movie from its poll before deleting it.");
+    const movie = await ctx.db.get("movies", args.movieId);
     await ctx.db.delete("movies", args.movieId);
+    if (movie?.posterStorageId) await ctx.storage.delete(movie.posterStorageId);
     return null;
   },
 });
@@ -310,18 +354,67 @@ export const deleteShow = mutation({
   args: { showId: v.id("shows") },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
-    const booking = await ctx.db.query("bookings").withIndex("by_showId", (q) => q.eq("showId", args.showId)).first();
-    if (booking) throw new Error("Shows with bookings cannot be deleted; disable the show instead.");
-    const sessions = await ctx.db.query("checkoutSessions").filter((q) => q.eq(q.field("showId"), args.showId)).take(100);
+    const bookings = await ctx.db
+      .query("bookings")
+      .withIndex("by_showId", (q) => q.eq("showId", args.showId))
+      .collect();
+    const confirmedBooking = bookings.find((booking) => booking.status === "confirmed");
+    if (confirmedBooking) {
+      throw new Error("Cancel all confirmed tickets before deleting this show.");
+    }
+
+    let bookingSeatsDeleted = 0;
+    for (const booking of bookings) {
+      const bookingSeats = await ctx.db
+        .query("bookingSeats")
+        .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
+        .collect();
+      for (const bookingSeat of bookingSeats) {
+        await ctx.db.delete("bookingSeats", bookingSeat._id);
+        bookingSeatsDeleted += 1;
+      }
+      await ctx.db.delete("bookings", booking._id);
+    }
+
+    const sessions = await ctx.db
+      .query("checkoutSessions")
+      .filter((q) => q.eq(q.field("showId"), args.showId))
+      .collect();
+    let checkoutSeatsDeleted = 0;
+    let paymentsDeleted = 0;
     for (const session of sessions) {
-      const held = await ctx.db.query("checkoutSessionSeats").withIndex("by_checkoutSessionId", (q) => q.eq("checkoutSessionId", session._id)).take(100);
-      for (const row of held) await ctx.db.delete("checkoutSessionSeats", row._id);
+      const held = await ctx.db
+        .query("checkoutSessionSeats")
+        .withIndex("by_checkoutSessionId", (q) => q.eq("checkoutSessionId", session._id))
+        .collect();
+      for (const row of held) {
+        await ctx.db.delete("checkoutSessionSeats", row._id);
+        checkoutSeatsDeleted += 1;
+      }
+      const payments = await ctx.db
+        .query("payments")
+        .withIndex("by_checkoutSessionId", (q) => q.eq("checkoutSessionId", session._id))
+        .collect();
+      for (const payment of payments) {
+        await ctx.db.delete("payments", payment._id);
+        paymentsDeleted += 1;
+      }
       await ctx.db.delete("checkoutSessions", session._id);
     }
-    const reservations = await ctx.db.query("reservations").withIndex("by_showId", (q) => q.eq("showId", args.showId)).take(1000);
+    const reservations = await ctx.db
+      .query("reservations")
+      .withIndex("by_showId", (q) => q.eq("showId", args.showId))
+      .collect();
     for (const reservation of reservations) await ctx.db.delete("reservations", reservation._id);
     await ctx.db.delete("shows", args.showId);
-    return null;
+    return {
+      cancelledBookingsDeleted: bookings.length,
+      bookingSeatsDeleted,
+      checkoutSessionsDeleted: sessions.length,
+      checkoutSeatsDeleted,
+      paymentsDeleted,
+      reservationsDeleted: reservations.length,
+    };
   },
 });
 
