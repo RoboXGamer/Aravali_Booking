@@ -39,11 +39,6 @@ export const listUpcoming = query({
     const result = [];
     for (const show of shows) {
       if (!show.isEnabled) continue;
-      if (
-        args.currentTime
-        && show.date === args.today
-        && show.time.slice(0, 5) < args.currentTime
-      ) continue;
       const movie = await ctx.db.get("movies", show.movieId);
       if (movie) {
         result.push(serializeShow(show, {
@@ -60,7 +55,7 @@ export const listUpcomingByMovie = query({
   args: {
     movieId: v.id("movies"),
     today: v.string(),
-    currentTime: v.string(),
+    currentTime: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const movie = await ctx.db.get("movies", args.movieId);
@@ -73,10 +68,7 @@ export const listUpcomingByMovie = query({
     const upcomingShows = shows
       .filter((show) =>
         show.isEnabled
-        && (
-          show.date > args.today
-          || (show.date === args.today && show.time.slice(0, 5) >= args.currentTime)
-        ),
+        && show.date >= args.today,
       )
       .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
     const posterUrl = await moviePosterUrl(ctx, movie);
@@ -98,10 +90,10 @@ export const listUpcomingByMovie = query({
 });
 
 export const getById = query({
-  args: { showId: v.id("shows") },
+  args: { showId: v.id("shows"), today: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const show = await ctx.db.get("shows", args.showId);
-    if (!show?.isEnabled) return null;
+    if (!show?.isEnabled || (args.today && show.date < args.today)) return null;
     const movie = await ctx.db.get("movies", show.movieId);
     if (!movie) return null;
     return serializeShow(show, {

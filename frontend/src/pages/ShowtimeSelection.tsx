@@ -6,17 +6,14 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { Spinner } from "../components/common/Spinner";
+import { auditoriumToday } from "../lib/auditoriumDate";
 
 interface ShowtimeSelectionProps {
   adminMode?: boolean;
 }
 
 function localDateParts() {
-  const now = new Date();
-  return {
-    today: now.toLocaleDateString("en-CA"),
-    currentTime: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
-  };
+  return { today: auditoriumToday() };
 }
 
 function formatDay(date: string) {

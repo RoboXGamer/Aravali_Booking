@@ -2,7 +2,7 @@ import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
-import { ensureSettings, getSettings, moviePosterUrl, normalizeEmail, requireAdmin, roundMoney } from "./lib";
+import { auditoriumDate, ensureSettings, getSettings, moviePosterUrl, normalizeEmail, requireAdmin, roundMoney } from "./lib";
 
 const bookingCategory = v.union(
   v.literal("Gold"),
@@ -46,6 +46,9 @@ async function validateBookingRequest(
 ) {
   const show = await ctx.db.get("shows", args.showId);
   if (!show?.isEnabled) throw new Error("Show not found or no longer enabled.");
+  if (show.date < auditoriumDate(now)) {
+    throw new Error("Booking has closed because the show date has ended.");
+  }
 
   const uniqueSeatIds = [...new Set(args.seatIds)];
   if (!uniqueSeatIds.length) throw new Error("Select at least one seat.");
@@ -130,10 +133,10 @@ export const getBookingSettings = query({
 });
 
 export const getAvailability = query({
-  args: { showId: v.id("shows") },
+  args: { showId: v.id("shows"), today: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const show = await ctx.db.get("shows", args.showId);
-    if (!show?.isEnabled) return null;
+    if (!show?.isEnabled || (args.today && show.date < args.today)) return null;
     const seats = await ctx.db
       .query("seats")
       .withIndex("by_rowIndex_and_colIndex")

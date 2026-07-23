@@ -4,13 +4,12 @@ import { Link } from "react-router-dom";
 
 import { api } from "../../convex/_generated/api";
 import { useLoadingTimeout } from "../hooks/useLoadingTimeout";
+import { auditoriumToday } from "../lib/auditoriumDate";
 import { MoviePoll } from "./MoviePoll";
 
 export function LandingPage() {
-  const now = new Date();
-  const today = now.toLocaleDateString("en-CA");
-  const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  const shows = useQuery(api.events.listUpcoming, { today, currentTime });
+  const today = auditoriumToday();
+  const shows = useQuery(api.events.listUpcoming, { today });
   const upcomingShow = shows?.[0] ?? null;
   const loadingTimedOut = useLoadingTimeout(shows === undefined);
   const isLoading = shows === undefined && !loadingTimedOut;

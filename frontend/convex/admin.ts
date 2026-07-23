@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { ensureSettings, getSettings, moviePosterUrl, requireAdmin } from "./lib";
+import { auditoriumDate, ensureSettings, getSettings, moviePosterUrl, requireAdmin } from "./lib";
 
 const nullableString = v.union(v.string(), v.null());
 const seatCategory = v.union(v.literal("Gold"), v.literal("Silver"));
@@ -650,6 +650,14 @@ export const checkIn = mutation({
     if (booking.status === "cancelled") {
       return {
         status: "cancelled" as const,
+        booking_code: booking.bookingCode,
+        customer_name: booking.customerName,
+      };
+    }
+    const show = await ctx.db.get("shows", booking.showId);
+    if (!show || show.date < auditoriumDate(args.now)) {
+      return {
+        status: "show_ended" as const,
         booking_code: booking.bookingCode,
         customer_name: booking.customerName,
       };

@@ -8,14 +8,16 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { Input } from "../components/common/Input";
 import { SeatControls, SeatMap } from "../components/common/SeatMap";
 import { Spinner } from "../components/common/Spinner";
+import { auditoriumToday } from "../lib/auditoriumDate";
 import type { BookingCategory, Seat } from "../types";
 
 export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
   const { event_id } = useParams();
   const navigate = useNavigate();
-  const show = useQuery(api.events.getById, event_id ? { showId: event_id as Id<"shows"> } : "skip");
+  const today = auditoriumToday();
+  const show = useQuery(api.events.getById, event_id ? { showId: event_id as Id<"shows">, today } : "skip");
   const settings = useQuery(api.bookings.getBookingSettings);
-  const availability = useQuery(api.bookings.getAvailability, event_id ? { showId: event_id as Id<"shows"> } : "skip");
+  const availability = useQuery(api.bookings.getAvailability, event_id ? { showId: event_id as Id<"shows">, today } : "skip");
   const createCheckout = useAction(api.payments.createCheckout);
   const createAdminBooking = useMutation(api.bookings.createAdminBooking);
   const [seats, setSeats] = useState<Seat[]>([]);

@@ -3,6 +3,7 @@ import { type FormEvent, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { adminBackend } from "../../services/admin";
+import { auditoriumToday } from "../../lib/auditoriumDate";
 import { Button } from "../common/Button";
 import { Card } from "../common/Card";
 import { Input } from "../common/Input";
@@ -267,14 +268,9 @@ export function BookingsSection({ view, bookings, movies, shows, perform }: Sect
     && (!dateFilter || booking.shows.date === dateFilter)
   ), [bookings, search, movieFilter, dateFilter]);
   const upcomingShows = useMemo(() => {
-    const now = new Date();
-    const today = now.toLocaleDateString("en-CA");
-    const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const today = auditoriumToday();
     return shows
-      .filter((show) =>
-        show.is_enabled
-        && (show.date > today || (show.date === today && show.time.slice(0, 5) >= currentTime)),
-      )
+      .filter((show) => show.is_enabled && show.date >= today)
       .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
   }, [shows]);
   const upcomingMovies = useMemo(

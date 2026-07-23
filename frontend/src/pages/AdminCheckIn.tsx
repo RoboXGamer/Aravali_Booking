@@ -49,6 +49,8 @@ const checkInOutcomeMessage = (
       return response.checked_in_at
         ? `This ticket was already checked in at ${formatCheckInTime(response.checked_in_at)}.`
         : "This ticket has already been checked in.";
+    case "show_ended":
+      return "Check-in has closed because the show date has ended.";
     default:
       return null;
   }
