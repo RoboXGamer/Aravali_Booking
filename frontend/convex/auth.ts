@@ -4,22 +4,23 @@ import { betterAuth } from "better-auth/minimal";
 
 import { components } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
-import { env, query } from "./_generated/server";
+import { query } from "./_generated/server";
 import authConfig from "./auth.config";
+import { siteUrl, trustedOrigins } from "./authOrigins";
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
 export const createAuth = (ctx: GenericCtx<DataModel>) =>
   betterAuth({
     baseURL: process.env.CONVEX_SITE_URL!,
-    trustedOrigins: [env.SITE_URL],
+    trustedOrigins,
     database: authComponent.adapter(ctx),
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: false,
     },
     plugins: [
-      crossDomain({ siteUrl: env.SITE_URL }),
+      crossDomain({ siteUrl }),
       convex({ authConfig }),
     ],
   });
