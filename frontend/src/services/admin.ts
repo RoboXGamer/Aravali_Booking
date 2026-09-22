@@ -7,6 +7,8 @@ export interface MovieInput {
   description: string;
   duration_minutes: number;
   poster_storage_id: string;
+  certificate: "U" | "U/A" | "A";
+  language: string;
 }
 
 export interface SeatInput {
@@ -26,6 +28,8 @@ const movieValues = (input: MovieInput) => ({
   description: input.description,
   durationMinutes: input.duration_minutes,
   posterStorageId: input.poster_storage_id as Id<"_storage">,
+  certificate: input.certificate,
+  language: input.language.trim(),
 });
 
 const seatValues = (input: SeatInput) => ({
@@ -45,11 +49,15 @@ export const adminBackend = {
     const now = new Date();
     const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const week = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    week.setDate(week.getDate() - ((week.getDay() + 6) % 7));
+    const weekStart = week.getTime();
     return convex.query(api.admin.getSection, {
       section,
       today: now.toISOString().slice(0, 10),
       dayStart,
       monthStart,
+      weekStart,
     });
   },
   initializeSettings: () => convex.mutation(api.admin.initializeSettings),
@@ -104,8 +112,8 @@ export const adminBackend = {
     }),
   },
   admins: {
-    setAccess: (email: string, isAdmin: boolean) =>
-      convex.mutation(api.admin.saveAdminAccess, { email, isAdmin }),
+    setAccess: (email: string, isAdmin: boolean, role: "operations" | "super_admin") =>
+      convex.mutation(api.admin.saveAdminAccess, { email, isAdmin, role }),
   },
   polls: {
     save: (pollId: string | null, input: {

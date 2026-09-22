@@ -3,15 +3,19 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { auditoriumDate, ensureSettings, getSettings, moviePosterUrl, requireAdmin } from "./lib";
+import { auditoriumDate, ensureSettings, getSettings, moviePosterUrl, requireAdmin, requireSuperAdmin } from "./lib";
 
 const nullableString = v.union(v.string(), v.null());
 const seatCategory = v.union(v.literal("Gold"), v.literal("Silver"));
+const filmCertificate = v.union(v.literal("U"), v.literal("U/A"), v.literal("A"));
+const adminRole = v.union(v.literal("operations"), v.literal("super_admin"));
 const movieFields = {
   title: v.string(),
   description: v.string(),
   durationMinutes: v.number(),
   posterStorageId: v.id("_storage"),
+  certificate: filmCertificate,
+  language: v.string(),
 };
 const moviePosterTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const maximumMoviePosterBytes = 10 * 1024 * 1024;
@@ -43,6 +47,8 @@ const serializeMovie = async (ctx: QueryCtx, movie: Doc<"movies">) => ({
   title: movie.title,
   description: movie.description,
   duration_minutes: movie.durationMinutes,
+  certificate: movie.certificate ?? "U",
+  language: movie.language ?? "Not specified",
   poster_storage_id: movie.posterStorageId ?? null,
   poster_url: await moviePosterUrl(ctx, movie) ?? "",
 });
@@ -111,9 +117,14 @@ export const getSection = query({
     today: v.string(),
     dayStart: v.number(),
     monthStart: v.number(),
+    // Optional during rollout so an older cached frontend can still load.
+    weekStart: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const admin = await requireAdmin(ctx);
+    if (admin.role === "operations" && args.section === "overview") {
+      throw new Error("Financial reporting is available to Super Admins only.");
+    }
     type ShowOutput = NonNullable<Awaited<ReturnType<typeof showDetails>>>;
     type BookingOutput = {
       id: Id<"bookings">;
@@ -133,6 +144,7 @@ export const getSection = query({
       dashboard: null as {
         today_bookings: number;
         today_revenue: number;
+        weekly_revenue: number;
         monthly_revenue: number;
         occupancy_percentage: number;
         upcoming_shows: ShowOutput[];
@@ -148,7 +160,7 @@ export const getSection = query({
         seat_hold_minutes: number;
         razorpay_fee_percentage: number;
       } | null,
-      adminUsers: [] as Array<{ id: Id<"adminUsers">; email: string; isAdmin: boolean }>,
+      adminUsers: [] as Array<{ id: Id<"adminUsers">; email: string; isAdmin: boolean; role: "operations" | "super_admin" }>,
     };
 
     const movieDocs = args.section === "overview" || args.section === "programming" || args.section === "bookings"
@@ -176,7 +188,9 @@ export const getSection = query({
     result.seats = seatDocs.map(serializeSeat);
 
     if (args.section === "overview" || args.section === "bookings") {
-      const bookingDocs = await ctx.db.query("bookings").order("desc").take(args.section === "overview" ? 1000 : 1000);
+      const bookingDocs = admin.role === "super_admin"
+        ? await ctx.db.query("bookings").order("desc").take(1000)
+        : [];
       for (const booking of bookingDocs) {
         const show = showMap.get(booking.showId);
         if (!show) continue;
@@ -203,6 +217,9 @@ export const getSection = query({
     if (args.section === "overview") {
       const confirmed = result.bookings.filter((booking) => booking.status === "confirmed");
       const todayBookings = confirmed.filter((booking) => new Date(booking.created_at).getTime() >= args.dayStart);
+      const weekday = new Date(`${args.today}T00:00:00Z`).getUTCDay();
+      const weekStart = args.weekStart ?? args.dayStart - ((weekday + 6) % 7) * 24 * 60 * 60 * 1000;
+      const weekBookings = confirmed.filter((booking) => new Date(booking.created_at).getTime() >= weekStart);
       const monthBookings = confirmed.filter((booking) => new Date(booking.created_at).getTime() >= args.monthStart);
       const upcoming = showRows.filter((show) => show.is_enabled && show.date >= args.today);
       const occupancy = upcoming.length
@@ -211,6 +228,7 @@ export const getSection = query({
       result.dashboard = {
         today_bookings: todayBookings.length,
         today_revenue: todayBookings.reduce((sum, booking) => sum + Number(booking.total_amount), 0),
+        weekly_revenue: weekBookings.reduce((sum, booking) => sum + Number(booking.total_amount), 0),
         monthly_revenue: monthBookings.reduce((sum, booking) => sum + Number(booking.total_amount), 0),
         occupancy_percentage: occupancy,
         upcoming_shows: upcoming.slice(0, 50),
@@ -223,7 +241,7 @@ export const getSection = query({
       result.polls = await Promise.all(pollDocs.map((poll) => pollDetails(ctx, poll)));
     }
 
-    if (args.section === "setup") {
+    if (args.section === "setup" && admin.role === "super_admin") {
       const [settings, admins] = await Promise.all([
         getSettings(ctx),
         ctx.db.query("adminUsers").withIndex("by_email").take(100),
@@ -234,7 +252,12 @@ export const getSection = query({
         seat_hold_minutes: settings.seatHoldMinutes,
         razorpay_fee_percentage: settings.razorpayFeePercentage,
       } : null;
-      result.adminUsers = admins.map((admin) => ({ id: admin._id, email: admin.email, isAdmin: admin.isAdmin }));
+      result.adminUsers = admins.map((admin) => ({
+        id: admin._id,
+        email: admin.email,
+        isAdmin: admin.isAdmin,
+        role: admin.role ?? "super_admin",
+      }));
     }
 
     return result;
@@ -242,31 +265,31 @@ export const getSection = query({
 });
 
 export const saveAdminAccess = mutation({
-  args: { email: v.string(), isAdmin: v.boolean() },
+  args: { email: v.string(), isAdmin: v.boolean(), role: adminRole },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    await requireSuperAdmin(ctx);
     const email = args.email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid email address.");
     const existing = await ctx.db.query("adminUsers")
       .withIndex("by_email", (q) => q.eq("email", email)).unique();
-    if (existing?.isAdmin && !args.isAdmin) {
+    if (existing?.isAdmin && (existing.role ?? "super_admin") === "super_admin" && (!args.isAdmin || args.role !== "super_admin")) {
       const activeAdmins = await ctx.db.query("adminUsers").take(100);
-      if (!activeAdmins.some((admin) => admin._id !== existing._id && admin.isAdmin)) {
-        throw new Error("At least one active administrator is required.");
+      if (!activeAdmins.some((admin) => admin._id !== existing._id && admin.isAdmin && (admin.role ?? "super_admin") === "super_admin")) {
+        throw new Error("At least one active Super Admin is required.");
       }
     }
     if (existing) {
-      await ctx.db.patch("adminUsers", existing._id, { isAdmin: args.isAdmin });
+      await ctx.db.patch("adminUsers", existing._id, { isAdmin: args.isAdmin, role: args.role });
       return existing._id;
     }
-    return await ctx.db.insert("adminUsers", { email, isAdmin: args.isAdmin });
+    return await ctx.db.insert("adminUsers", { email, isAdmin: args.isAdmin, role: args.role });
   },
 });
 
 export const initializeSettings = mutation({
   args: {},
   handler: async (ctx) => {
-    await requireAdmin(ctx);
+    await requireSuperAdmin(ctx);
     await ensureSettings(ctx);
     return null;
   },
@@ -297,6 +320,7 @@ export const createMovie = mutation({
   args: movieFields,
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
+    if (!args.language.trim()) throw new Error("Enter the movie language.");
     await validateMoviePoster(ctx, args.posterStorageId);
     return await ctx.db.insert("movies", args);
   },
@@ -306,6 +330,7 @@ export const updateMovie = mutation({
   args: { movieId: v.id("movies"), ...movieFields },
   handler: async (ctx, { movieId, ...values }) => {
     await requireAdmin(ctx);
+    if (!values.language.trim()) throw new Error("Enter the movie language.");
     const existing = await ctx.db.get("movies", movieId);
     if (!existing) throw new Error("Movie not found.");
     await validateMoviePoster(ctx, values.posterStorageId);
@@ -335,7 +360,7 @@ export const deleteMovie = mutation({
 export const createShow = mutation({
   args: { movieId: v.id("movies"), date: v.string(), time: v.string(), isEnabled: v.boolean() },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    await requireSuperAdmin(ctx);
     if (!await ctx.db.get("movies", args.movieId)) throw new Error("Movie not found.");
     return await ctx.db.insert("shows", { ...args, soldSeats: 0 });
   },
@@ -344,7 +369,7 @@ export const createShow = mutation({
 export const setShowEnabled = mutation({
   args: { showId: v.id("shows"), isEnabled: v.boolean() },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    await requireSuperAdmin(ctx);
     await ctx.db.patch("shows", args.showId, { isEnabled: args.isEnabled });
     return null;
   },
@@ -353,7 +378,7 @@ export const setShowEnabled = mutation({
 export const deleteShow = mutation({
   args: { showId: v.id("shows") },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    await requireSuperAdmin(ctx);
     const bookings = await ctx.db
       .query("bookings")
       .withIndex("by_showId", (q) => q.eq("showId", args.showId))
@@ -480,7 +505,7 @@ export const releaseReservation = mutation({
 export const setBookingStatus = mutation({
   args: { bookingId: v.id("bookings"), status: v.union(v.literal("confirmed"), v.literal("cancelled")) },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    await requireSuperAdmin(ctx);
     const booking = await ctx.db.get("bookings", args.bookingId);
     if (!booking) throw new Error("Booking not found.");
     if (args.status === "confirmed" && booking.status === "cancelled") {
@@ -524,7 +549,7 @@ export const updateSettings = mutation({
     razorpayFeePercentage: v.number(),
   },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    await requireSuperAdmin(ctx);
     if (args.maxSeatsPerBooking < 1 || args.maxSeatsPerBooking > 20) throw new Error("Booking limit must be between 1 and 20.");
     if (args.seatHoldMinutes < 1 || args.seatHoldMinutes > 30) throw new Error("Seat hold must be between 1 and 30 minutes.");
     if (args.razorpayFeePercentage < 0) throw new Error("Payment fee cannot be negative.");
@@ -608,7 +633,7 @@ export const setPollStatus = mutation({
 export const overridePollWinner = mutation({
   args: { pollId: v.id("polls"), movieId: v.id("movies") },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    await requireSuperAdmin(ctx);
     const option = await ctx.db.query("pollOptions")
       .withIndex("by_pollId_and_movieId", (q) => q.eq("pollId", args.pollId).eq("movieId", args.movieId)).unique();
     if (!option) throw new Error("Winner must be one of the poll options.");
@@ -624,7 +649,7 @@ export const overridePollWinner = mutation({
 export const deletePoll = mutation({
   args: { pollId: v.id("polls") },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    await requireSuperAdmin(ctx);
     const votes = await ctx.db.query("pollVotes").withIndex("by_pollId", (q) => q.eq("pollId", args.pollId)).take(1000);
     for (const vote of votes) await ctx.db.delete("pollVotes", vote._id);
     const options = await ctx.db.query("pollOptions").withIndex("by_pollId", (q) => q.eq("pollId", args.pollId)).take(100);

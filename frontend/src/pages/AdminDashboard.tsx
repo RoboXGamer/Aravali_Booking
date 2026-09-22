@@ -1,4 +1,5 @@
 import { CalendarDays, Clapperboard, LayoutDashboard, LogOut, Menu, ScanLine, Settings2, Ticket, X } from "lucide-react";
+import { useQuery } from "convex/react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -20,8 +21,10 @@ import type { AdminAccess, AppSettings } from "../components/admin/ApplicationSe
 import type { AdminPoll } from "../components/admin/PollManagement";
 import { Button } from "../components/common/Button";
 import { Spinner } from "../components/common/Spinner";
+import { api } from "../../convex/_generated/api";
 import { authClient } from "../lib/auth-client";
 import { adminBackend } from "../services/admin";
+import type { AdminRole } from "../types";
 import "../admin-dashboard.css";
 
 type AdminSection = "overview" | "programming" | "bookings" | "setup";
@@ -39,24 +42,39 @@ const sectionViews = {
   setup: ["seats", "booking", "access"],
 } as const;
 
-const sectionPath = (section: AdminSection) => {
+const availableViews = (section: AdminSection, role: AdminRole): readonly string[] => {
+  if (section === "overview") return [];
+  if (role === "super_admin") return sectionViews[section];
+  if (section === "programming") return ["movies", "poll"];
+  if (section === "bookings") return ["reservations"];
+  return ["seats"];
+};
+
+const sectionPath = (section: AdminSection, role: AdminRole) => {
   if (section === "overview") return "/admin";
-  return `/admin/${section}/${sectionViews[section][0]}`;
+  return `/admin/${section}/${availableViews(section, role)[0]}`;
 };
 
 export function AdminDashboard() {
   const navigate = useNavigate();
   const params = useParams<{ section?: string; view?: string }>();
+  const admin = useQuery(api.auth.getCurrentAdmin);
+  const role: AdminRole = admin?.role ?? "operations";
+  const allowedNavigation = role === "super_admin"
+    ? navigation
+    : navigation.filter((item) => item.id !== "overview");
+  const defaultSection: AdminSection = role === "super_admin" ? "overview" : "bookings";
   const requestedSection = params.section;
-  const section: AdminSection = navigation.some((item) => item.id === requestedSection)
+  const section: AdminSection = allowedNavigation.some((item) => item.id === requestedSection)
     ? requestedSection as AdminSection
-    : "overview";
+    : defaultSection;
   const requestedView = params.view;
+  const views = availableViews(section, role);
   const sectionView = section === "overview"
     ? null
-    : sectionViews[section].includes(requestedView as never)
+    : views.includes(requestedView ?? "")
       ? requestedView
-      : sectionViews[section][0];
+      : views[0];
 
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [movies, setMovies] = useState<Movie[]>([]);
@@ -76,7 +94,7 @@ export function AdminDashboard() {
     setError("");
     try {
       let result = await adminBackend.loadSection(section);
-      if (section === "setup" && !result.settings) {
+      if (role === "super_admin" && section === "setup" && !result.settings) {
         await adminBackend.initializeSettings();
         result = await adminBackend.loadSection(section);
       }
@@ -93,7 +111,7 @@ export function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [section]);
+  }, [role, section]);
 
   useEffect(() => {
     void loadSection();
@@ -102,18 +120,19 @@ export function AdminDashboard() {
   }, [loadSection]);
 
   useEffect(() => {
-    if (requestedSection && !navigation.some((item) => item.id === requestedSection)) {
-      navigate("/admin", { replace: true });
+    if (!admin) return;
+    if ((requestedSection && !allowedNavigation.some((item) => item.id === requestedSection)) || (!requestedSection && defaultSection !== "overview")) {
+      navigate(sectionPath(defaultSection, role), { replace: true });
       return;
     }
     if (section === "overview") {
       if (requestedView) navigate("/admin", { replace: true });
       return;
     }
-    if (!requestedView || !sectionViews[section].includes(requestedView as never)) {
-      navigate(sectionPath(section), { replace: true });
+    if (!requestedView || !views.includes(requestedView)) {
+      navigate(sectionPath(section, role), { replace: true });
     }
-  }, [navigate, requestedSection, requestedView, section]);
+  }, [admin, allowedNavigation, defaultSection, navigate, requestedSection, requestedView, role, section, views]);
 
   useEffect(() => {
     if (!mobileNavOpen) return;
@@ -151,8 +170,12 @@ export function AdminDashboard() {
 
   const goToSection = (nextSection: AdminSection) => {
     setMobileNavOpen(false);
-    navigate(sectionPath(nextSection));
+    navigate(sectionPath(nextSection, role));
   };
+
+  if (admin === undefined) {
+    return <div className="flex min-h-[60vh] items-center justify-center"><Spinner size="lg" /></div>;
+  }
 
   return (
     <div className="admin-page">
@@ -160,17 +183,17 @@ export function AdminDashboard() {
         <header className="admin-header">
           <div className="admin-header-title">
             <button className="admin-menu-button" type="button" onClick={() => setMobileNavOpen(true)} aria-label="Open administration menu"><Menu /></button>
-            <div><span className="admin-header-kicker">Administration</span><h1>{navigation.find((item) => item.id === section)?.label}</h1></div>
+            <div><span className="admin-header-kicker">{role === "super_admin" ? "Super Admin" : "Operations Admin"}</span><h1>{navigation.find((item) => item.id === section)?.label}</h1></div>
           </div>
           <div className="admin-header-actions">
-            {section === "overview" && <Button onClick={() => goToSection("programming")}><CalendarDays className="h-4 w-4" /> Schedule show</Button>}
+            {role === "super_admin" && section === "overview" && <Button onClick={() => goToSection("programming")}><CalendarDays className="h-4 w-4" /> Schedule show</Button>}
             <Link to="/admin/check-in"><Button variant="secondary"><ScanLine className="h-4 w-4" /> Check-in</Button></Link>
             <Button variant="ghost" onClick={() => { void authClient.signOut().finally(() => navigate("/admin/login")); }}><LogOut className="h-4 w-4" /> Sign out</Button>
           </div>
         </header>
 
         <nav className="admin-tabs admin-tabs-desktop" aria-label="Administration sections">
-          {navigation.map(({ id, label, icon: Icon }) => (
+          {allowedNavigation.map(({ id, label, icon: Icon }) => (
             <button key={id} type="button" onClick={() => goToSection(id)} className={section === id ? "is-active" : ""} aria-current={section === id ? "page" : undefined}>
               <Icon />{label}
             </button>
@@ -182,7 +205,7 @@ export function AdminDashboard() {
           <aside className="admin-mobile-drawer" role="dialog" aria-modal="true" aria-label="Administration menu">
             <div className="admin-mobile-drawer-header"><div><span>Administration</span><strong>Auditorium operations</strong></div><button type="button" onClick={() => setMobileNavOpen(false)} aria-label="Close administration menu"><X /></button></div>
             <nav className="admin-mobile-tabs" aria-label="Administration sections">
-              {navigation.map(({ id, label, icon: Icon }) => (
+              {allowedNavigation.map(({ id, label, icon: Icon }) => (
                 <button key={id} type="button" onClick={() => goToSection(id)} className={section === id ? "is-active" : ""} aria-current={section === id ? "page" : undefined}><Icon /><span>{label}</span></button>
               ))}
             </nav>
@@ -195,10 +218,10 @@ export function AdminDashboard() {
 
         {error && <p className="mt-5 rounded-xl border border-rose-900 bg-rose-950/20 p-4 text-sm text-rose-300">{error}</p>}
         {loading ? <div className="flex min-h-[55vh] items-center justify-center"><Spinner size="lg" /></div> : <>
-          {section === "overview" && dashboard && <OverviewSection dashboard={dashboard} onOpenProgramming={() => goToSection("programming")} />}
-          {section === "programming" && <ProgrammingSection view={sectionView as ProgrammingView} movies={movies} shows={shows} polls={polls} saving={saving} perform={perform} />}
-          {section === "bookings" && <BookingsSection view={sectionView as BookingView} bookings={bookings} movies={movies} shows={shows} saving={saving} perform={perform} />}
-          {section === "setup" && <SetupSection view={sectionView as SetupView} seats={seats} settings={settings} admins={admins} saving={saving} perform={perform} />}
+          {role === "super_admin" && section === "overview" && dashboard && <OverviewSection dashboard={dashboard} onOpenProgramming={() => goToSection("programming")} />}
+          {section === "programming" && <ProgrammingSection view={sectionView as ProgrammingView} movies={movies} shows={shows} polls={polls} saving={saving} perform={perform} role={role} />}
+          {section === "bookings" && <BookingsSection view={sectionView as BookingView} bookings={bookings} movies={movies} shows={shows} saving={saving} perform={perform} role={role} />}
+          {section === "setup" && <SetupSection view={sectionView as SetupView} seats={seats} settings={settings} admins={admins} saving={saving} perform={perform} role={role} />}
         </>}
       </main>
     </div>

@@ -9,7 +9,11 @@ export interface Show {
   poster_url: string;
   duration_minutes: number;
   status: "active" | "disabled";
+  certificate: "U" | "U/A" | "A";
+  language: string;
 }
+
+export type AdminRole = "operations" | "super_admin";
 
 export type SeatAvailability = "available" | "booked" | "held" | "reserved" | "disabled";
 export type BookingCategory = "Gold" | "Silver (JCO)" | "Silver (OR)";
@@ -122,6 +126,8 @@ export interface PollMovie {
   description: string;
   poster_url: string;
   duration_minutes: number;
+  certificate: "U" | "U/A" | "A";
+  language: string;
 }
 
 export interface PollOption {

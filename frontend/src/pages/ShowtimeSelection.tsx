@@ -1,10 +1,11 @@
 import { useQuery } from "convex/react";
 import { ArrowLeft, CalendarDays, Clock3, MapPin, Ticket } from "lucide-react";
-import { useMemo } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { AgeConfirmationModal } from "../components/common/AgeConfirmationModal";
 import { Spinner } from "../components/common/Spinner";
 import { auditoriumToday } from "../lib/auditoriumDate";
 
@@ -34,6 +35,8 @@ function formatTime(time: string) {
 
 export function ShowtimeSelection({ adminMode = false }: ShowtimeSelectionProps) {
   const { movie_id: movieId } = useParams();
+  const navigate = useNavigate();
+  const [pendingShowId, setPendingShowId] = useState<string | null>(null);
   const now = useMemo(localDateParts, []);
   const data = useQuery(
     api.events.listUpcomingByMovie,
@@ -49,6 +52,24 @@ export function ShowtimeSelection({ adminMode = false }: ShowtimeSelectionProps)
     return [...groups.entries()];
   }, [data]);
   const backTo = adminMode ? "/admin/bookings/reservations" : "/";
+
+  const openShow = (showId: string) => {
+    if (adminMode) {
+      navigate(`/admin/book/${showId}`);
+      return;
+    }
+    if (data?.movie.certificate === "A" && !sessionStorage.getItem(`aravalli.age-confirmed.${data.movie.id}`)) {
+      setPendingShowId(showId);
+      return;
+    }
+    navigate(`/book/${showId}`);
+  };
+
+  const confirmAge = () => {
+    if (!data || !pendingShowId) return;
+    sessionStorage.setItem(`aravalli.age-confirmed.${data.movie.id}`, "true");
+    navigate(`/book/${pendingShowId}`);
+  };
 
   if (data === undefined) {
     return <div className="grid min-h-screen place-items-center bg-background"><Spinner size="lg" /></div>;
@@ -103,6 +124,8 @@ export function ShowtimeSelection({ adminMode = false }: ShowtimeSelectionProps)
             <h2 className="mt-2 text-2xl font-black text-white sm:text-3xl">{data.movie.title}</h2>
             <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-400">
               <span className="inline-flex items-center gap-2"><Clock3 className="h-4 w-4" /> {data.movie.duration_minutes} min</span>
+              <span className="rounded-md border border-slate-700 px-2 py-1 font-black text-slate-200">{data.movie.certificate}</span>
+              <span>{data.movie.language}</span>
               <span className="inline-flex items-center gap-2"><MapPin className="h-4 w-4" /> Aravalli Auditorium Main Hall</span>
             </div>
 
@@ -123,14 +146,15 @@ export function ShowtimeSelection({ adminMode = false }: ShowtimeSelectionProps)
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {shows.map((show) => (
-                          <Link
+                          <button
                             key={show.id}
-                            to={adminMode ? `/admin/book/${show.id}` : `/book/${show.id}`}
+                            type="button"
+                            onClick={() => openShow(show.id)}
                             className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-violet-500/35 bg-violet-500/10 px-4 text-sm font-bold text-violet-200 transition hover:border-violet-400 hover:bg-violet-500/20 hover:text-white"
                           >
                             <Clock3 className="h-4 w-4" />
                             {formatTime(show.time)}
-                          </Link>
+                          </button>
                         ))}
                       </div>
                     </section>
@@ -141,6 +165,12 @@ export function ShowtimeSelection({ adminMode = false }: ShowtimeSelectionProps)
           </div>
         </section>
       </div>
+      <AgeConfirmationModal
+        movieTitle={data.movie.title}
+        open={pendingShowId !== null}
+        onCancel={() => setPendingShowId(null)}
+        onConfirm={confirmAge}
+      />
     </main>
   );
 }

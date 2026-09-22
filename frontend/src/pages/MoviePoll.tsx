@@ -48,11 +48,11 @@ function getPollColumnCount(optionCount: number): number {
 
 export function MoviePoll() {
   const visitorId = useMemo(getVisitorId, []);
+  const [now, setNow] = useState(Date.now());
   const data = useQuery(api.polls.getCurrent, { visitorId });
   const castVote = useMutation(api.polls.vote);
   const [votingOption, setVotingOption] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [now, setNow] = useState(Date.now());
   const loadingTimedOut = useLoadingTimeout(data === undefined);
 
   useEffect(() => {
@@ -108,25 +108,14 @@ export function MoviePoll() {
   }
 
   if (!data?.poll) {
-    return (
-      <section className="movie-poll-section">
-        <div className="movie-poll-shell">
-          <PollHeader status={<strong>No active poll</strong>} />
-          <div className="movie-poll-empty">
-            <span className="movie-poll-empty-icon"><Trophy /></span>
-            <h2>No upcoming movie poll</h2>
-            <p>The next audience vote will appear here when it opens.</p>
-          </div>
-          {error && <p className="movie-poll-error">{error}</p>}
-          <footer className="movie-poll-mobile-timer"><Clock3 />No active poll</footer>
-        </div>
-      </section>
-    );
+    return null;
   }
 
   const { poll, options, has_voted: hasVoted, selected_option_id: selectedId } = data;
   const remaining = new Date(poll.voting_ends_at).getTime() - now;
-  const open = data.is_open && remaining > 0;
+  const votingStartsAt = new Date(poll.voting_starts_at).getTime();
+  const open = data.is_open && now >= votingStartsAt && remaining > 0;
+  if (!open) return null;
   const winner = poll.winning_movie || options.find((option) => option.movie_id === poll.winning_movie_id)?.movie;
   const columnCount = getPollColumnCount(options.length);
   const hasShortFinalRow = options.length >= 5 && options.length % 2 === 1;

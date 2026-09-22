@@ -5,6 +5,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { AgeConfirmationModal } from "../components/common/AgeConfirmationModal";
 import { Input } from "../components/common/Input";
 import { SeatControls, SeatMap } from "../components/common/SeatMap";
 import { Spinner } from "../components/common/Spinner";
@@ -30,6 +31,7 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
   const toastTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -38,6 +40,15 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
     const availableIds = new Set<string>(availability.seats.filter((seat) => seat.availability === "available").map((seat) => seat.id));
     setSelectedIds((current) => current.filter((id) => availableIds.has(id)));
   }, [availability]);
+
+  useEffect(() => {
+    if (!show) return;
+    setAgeConfirmed(
+      adminMode
+      || show.certificate !== "A"
+      || Boolean(sessionStorage.getItem(`aravalli.age-confirmed.${show.movie_id}`)),
+    );
+  }, [adminMode, show]);
 
   useEffect(() => () => {
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
@@ -131,6 +142,21 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
 
   if (show === undefined || settings === undefined || availability === undefined) return <div className="flex min-h-screen items-center justify-center"><Spinner size="lg" /></div>;
   if (!show || !settings) return <div className="mx-auto max-w-2xl px-5 py-20 text-center text-rose-300">{error || "Booking is unavailable."}</div>;
+  if (!ageConfirmed) {
+    return (
+      <main className="min-h-screen bg-background">
+        <AgeConfirmationModal
+          movieTitle={show.title}
+          open
+          onCancel={() => navigate(`/showtimes/${show.movie_id}`)}
+          onConfirm={() => {
+            sessionStorage.setItem(`aravalli.age-confirmed.${show.movie_id}`, "true");
+            setAgeConfirmed(true);
+          }}
+        />
+      </main>
+    );
+  }
 
   const formattedDate = new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${show.date}T00:00:00`));
 

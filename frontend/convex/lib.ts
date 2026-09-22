@@ -2,6 +2,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 
 type DatabaseCtx = QueryCtx | MutationCtx;
+export type AdminRole = "operations" | "super_admin";
 
 export async function requireAdmin(ctx: DatabaseCtx) {
   const identity = await ctx.auth.getUserIdentity();
@@ -12,7 +13,17 @@ export async function requireAdmin(ctx: DatabaseCtx) {
     .withIndex("by_email", (q) => q.eq("email", email))
     .unique();
   if (!admin?.isAdmin) throw new Error("Administrator access required.");
-  return { email, tokenIdentifier: identity.tokenIdentifier };
+  return {
+    email,
+    tokenIdentifier: identity.tokenIdentifier,
+    role: (admin.role ?? "super_admin") as AdminRole,
+  };
+}
+
+export async function requireSuperAdmin(ctx: DatabaseCtx) {
+  const admin = await requireAdmin(ctx);
+  if (admin.role !== "super_admin") throw new Error("Super Admin access required.");
+  return admin;
 }
 
 export async function getSettings(ctx: DatabaseCtx) {

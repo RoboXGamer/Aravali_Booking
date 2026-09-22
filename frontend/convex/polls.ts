@@ -26,6 +26,8 @@ async function loadPoll(ctx: QueryCtx, pollId: Id<"polls">, visitorId: string | 
         description: movie.description,
         poster_url: await moviePosterUrl(ctx, movie),
         duration_minutes: movie.durationMinutes,
+        certificate: movie.certificate ?? "U",
+        language: movie.language ?? "Not specified",
       },
     });
   }
@@ -53,6 +55,8 @@ async function loadPoll(ctx: QueryCtx, pollId: Id<"polls">, visitorId: string | 
         description: winningMovie.description,
         poster_url: await moviePosterUrl(ctx, winningMovie),
         duration_minutes: winningMovie.durationMinutes,
+        certificate: winningMovie.certificate ?? "U",
+        language: winningMovie.language ?? "Not specified",
       } : null,
     },
     options: optionRows.map((option) => ({
@@ -67,26 +71,24 @@ async function loadPoll(ctx: QueryCtx, pollId: Id<"polls">, visitorId: string | 
 }
 
 export const getCurrent = query({
-  args: { visitorId: v.union(v.string(), v.null()) },
+  args: {
+    visitorId: v.union(v.string(), v.null()),
+    now: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
-    const open = await ctx.db
+    const now = args.now ?? Date.now();
+    const openPolls = await ctx.db
       .query("polls")
-      .withIndex("by_status_and_votingEndsAt", (q) => q.eq("status", "voting"))
-      .order("desc")
-      .first();
-    if (open) return await loadPoll(ctx, open._id, args.visitorId);
-    const overridden = await ctx.db
-      .query("polls")
-      .withIndex("by_status_and_votingEndsAt", (q) => q.eq("status", "overridden"))
-      .order("desc")
-      .first();
-    const closed = overridden ?? await ctx.db
-      .query("polls")
-      .withIndex("by_status_and_votingEndsAt", (q) => q.eq("status", "closed"))
-      .order("desc")
-      .first();
-    if (!closed) return { poll: null, options: [], total_votes: 0, has_voted: false, selected_option_id: null, is_open: false };
-    return await loadPoll(ctx, closed._id, args.visitorId);
+      .withIndex("by_status_and_votingEndsAt", (q) =>
+        q.eq("status", "voting").gt("votingEndsAt", now),
+      )
+      .order("asc")
+      .take(20);
+    const currentOrNextPoll = openPolls.find((poll) => poll.votingStartsAt <= now) ?? openPolls[0];
+    if (!currentOrNextPoll) {
+      return { poll: null, options: [], total_votes: 0, has_voted: false, selected_option_id: null, is_open: false };
+    }
+    return await loadPoll(ctx, currentOrNextPoll._id, args.visitorId);
   },
 });
 

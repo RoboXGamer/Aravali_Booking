@@ -14,6 +14,8 @@ function serializeShow(show: {
   description: string;
   posterUrl: string | null;
   durationMinutes: number;
+  certificate?: "U" | "U/A" | "A";
+  language?: string;
 }) {
   return {
     id: show._id,
@@ -25,6 +27,8 @@ function serializeShow(show: {
     venue: "Aravalli Auditorium Main Hall",
     poster_url: movie.posterUrl,
     duration_minutes: movie.durationMinutes,
+    certificate: movie.certificate ?? "U",
+    language: movie.language ?? "Not specified",
     status: show.isEnabled ? "active" as const : "disabled" as const,
   };
 }
@@ -80,6 +84,8 @@ export const listUpcomingByMovie = query({
         description: movie.description,
         poster_url: posterUrl,
         duration_minutes: movie.durationMinutes,
+        certificate: movie.certificate ?? "U",
+        language: movie.language ?? "Not specified",
       },
       shows: upcomingShows.map((show) => serializeShow(show, {
         ...movie,

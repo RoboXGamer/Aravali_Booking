@@ -3,11 +3,14 @@ import { v } from "convex/values";
 
 const nullableString = v.union(v.string(), v.null());
 const seatCategory = v.union(v.literal("Gold"), v.literal("Silver"));
+const filmCertificate = v.union(v.literal("U"), v.literal("U/A"), v.literal("A"));
+const adminRole = v.union(v.literal("operations"), v.literal("super_admin"));
 
 export default defineSchema({
   adminUsers: defineTable({
     email: v.string(),
     isAdmin: v.boolean(),
+    role: v.optional(adminRole),
   }).index("by_email", ["email"]),
 
   movies: defineTable({
@@ -15,6 +18,8 @@ export default defineSchema({
     description: v.string(),
     durationMinutes: v.number(),
     posterStorageId: v.optional(v.id("_storage")),
+    certificate: v.optional(filmCertificate),
+    language: v.optional(v.string()),
   }),
 
   shows: defineTable({

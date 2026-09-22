@@ -18,6 +18,7 @@ import type * as http from "../http.js";
 import type * as lib from "../lib.js";
 import type * as maintenance from "../maintenance.js";
 import type * as migrationAuditoriumLayout from "../migrationAuditoriumLayout.js";
+import type * as migrationMovieMetadataAndAdminRoles from "../migrationMovieMetadataAndAdminRoles.js";
 import type * as migrationRemoveBronze from "../migrationRemoveBronze.js";
 import type * as migrationSeatSections from "../migrationSeatSections.js";
 import type * as payments from "../payments.js";
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   lib: typeof lib;
   maintenance: typeof maintenance;
   migrationAuditoriumLayout: typeof migrationAuditoriumLayout;
+  migrationMovieMetadataAndAdminRoles: typeof migrationMovieMetadataAndAdminRoles;
   migrationRemoveBronze: typeof migrationRemoveBronze;
   migrationSeatSections: typeof migrationSeatSections;
   payments: typeof payments;

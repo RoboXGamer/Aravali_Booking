@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { adminBackend } from "../../services/admin";
 import { auditoriumToday } from "../../lib/auditoriumDate";
+import type { AdminRole } from "../../types";
 import { Button } from "../common/Button";
 import { Card } from "../common/Card";
 import { Input } from "../common/Input";
@@ -17,6 +18,8 @@ export interface Movie {
   duration_minutes: number;
   poster_url: string;
   poster_storage_id: string | null;
+  certificate: "U" | "U/A" | "A";
+  language: string;
 }
 
 export interface ShowRow {
@@ -60,6 +63,7 @@ export interface BookingRow {
 export interface DashboardData {
   today_bookings: number;
   today_revenue: number;
+  weekly_revenue: number;
   monthly_revenue: number;
   occupancy_percentage: number;
   upcoming_shows: ShowRow[];
@@ -104,6 +108,7 @@ export function OverviewSection({ dashboard, onOpenProgramming }: { dashboard: D
       <div className="admin-metrics">{[
         { label: "Today's bookings", value: dashboard.today_bookings, caption: "Confirmed today", icon: Ticket },
         { label: "Today's revenue", value: `INR ${dashboard.today_revenue.toFixed(2)}`, caption: "Gross sales today", icon: BarChart3 },
+        { label: "Weekly revenue", value: `INR ${dashboard.weekly_revenue.toFixed(2)}`, caption: "Current week", icon: BarChart3 },
         { label: "Monthly revenue", value: `INR ${dashboard.monthly_revenue.toFixed(2)}`, caption: "Current month", icon: LayoutGrid },
         { label: "Occupancy", value: `${dashboard.occupancy_percentage}%`, caption: "Upcoming shows", icon: Users },
       ].map(({ label, value, caption, icon: Icon }) => (
@@ -136,8 +141,8 @@ export function OverviewSection({ dashboard, onOpenProgramming }: { dashboard: D
 
 export type ProgrammingView = "schedule" | "movies" | "poll";
 
-export function ProgrammingSection({ view, movies, shows, polls, saving, perform }: SectionProps & { view: ProgrammingView; movies: Movie[]; shows: ShowRow[]; polls: AdminPoll[] }) {
-  const [movieForm, setMovieForm] = useState({ title: "", description: "", duration_minutes: "" });
+export function ProgrammingSection({ view, movies, shows, polls, saving, perform, role }: SectionProps & { view: ProgrammingView; movies: Movie[]; shows: ShowRow[]; polls: AdminPoll[]; role: AdminRole }) {
+  const [movieForm, setMovieForm] = useState({ title: "", description: "", duration_minutes: "", certificate: "U" as Movie["certificate"], language: "" });
   const [editingMovie, setEditingMovie] = useState<string | null>(null);
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [posterPreview, setPosterPreview] = useState("");
@@ -174,7 +179,7 @@ export function ProgrammingSection({ view, movies, shows, polls, saving, perform
     });
     if (succeeded) {
       if (posterPreview.startsWith("blob:")) URL.revokeObjectURL(posterPreview);
-      setMovieForm({ title: "", description: "", duration_minutes: "" });
+      setMovieForm({ title: "", description: "", duration_minutes: "", certificate: "U", language: "" });
       setEditingMovie(null);
       setPosterFile(null);
       setPosterPreview("");
@@ -205,12 +210,14 @@ export function ProgrammingSection({ view, movies, shows, polls, saving, perform
   return (
     <section>
       <Subnav value={view} items={[
-        { id: "schedule", label: "Schedule", to: "/admin/programming/schedule" },
+        ...(role === "super_admin" ? [
+          { id: "schedule" as const, label: "Schedule", to: "/admin/programming/schedule" },
+        ] : []),
         { id: "movies", label: "Movie library", to: "/admin/programming/movies" },
         { id: "poll", label: "Weekly poll", to: "/admin/programming/poll" },
       ]} />
 
-      {view === "schedule" && <section className="mt-6 space-y-6">
+      {role === "super_admin" && view === "schedule" && <section className="mt-6 space-y-6">
         <Card><h2 className="font-black text-white">Schedule show</h2><form className="mt-4 grid gap-3 sm:grid-cols-4" onSubmit={(event) => { event.preventDefault(); void perform(() => adminBackend.shows.create({ ...showForm, movie_id: showForm.movie_id || movies[0]?.id || "", is_enabled: true })); }}><select required value={showForm.movie_id || movies[0]?.id || ""} onChange={(event) => setShowForm({ ...showForm, movie_id: event.target.value })} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-3 text-sm text-white sm:col-span-2">{movies.map((movie) => <option key={movie.id} value={movie.id}>{movie.title}</option>)}</select><Input type="date" required value={showForm.date} onChange={(event) => setShowForm({ ...showForm, date: event.target.value })} /><Input type="time" required value={showForm.time} onChange={(event) => setShowForm({ ...showForm, time: event.target.value })} /><Button type="submit" disabled={saving || movies.length === 0} className="sm:col-span-4">Add show</Button></form></Card>
         <Card><div className="divide-y divide-slate-800">{shows.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No shows scheduled yet.</p>}{shows.map((show) => <div key={show.id} className="flex flex-col justify-between gap-3 py-3 sm:flex-row sm:items-center"><div><p className="font-bold text-white">{show.movies.title}</p><p className="text-xs text-slate-500">{show.date} · {show.time.slice(0, 5)} · {show.occupancy_percentage ?? 0}% occupied ({show.sold_seats ?? 0}/{show.capacity ?? 0})</p></div><div className="flex gap-2"><Button size="sm" variant="secondary" onClick={() => void perform(() => adminBackend.shows.setEnabled(show.id, !show.is_enabled))}>{show.is_enabled ? "Disable" : "Enable"}</Button><Button size="sm" variant="danger" onClick={() => { if (window.confirm("Delete this show? Cancelled tickets and all related booking records will also be permanently deleted.")) void perform(() => adminBackend.shows.delete(show.id)); }}>Delete</Button></div></div>)}</div></Card>
       </section>}
@@ -222,6 +229,17 @@ export function ProgrammingSection({ view, movies, shows, polls, saving, perform
             <Input label="Movie name" required value={movieForm.title} onChange={(event) => setMovieForm({ ...movieForm, title: event.target.value })} />
             <Input label="Description" required value={movieForm.description} onChange={(event) => setMovieForm({ ...movieForm, description: event.target.value })} />
             <Input label="Duration (minutes)" type="number" min="1" required value={movieForm.duration_minutes} onChange={(event) => setMovieForm({ ...movieForm, duration_minutes: event.target.value })} />
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                Certificate
+                <select required value={movieForm.certificate} onChange={(event) => setMovieForm({ ...movieForm, certificate: event.target.value as Movie["certificate"] })} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-3 text-sm font-normal normal-case tracking-normal text-white">
+                  <option value="U">U</option>
+                  <option value="U/A">U/A</option>
+                  <option value="A">A (18+)</option>
+                </select>
+              </label>
+              <Input label="Language" required value={movieForm.language} onChange={(event) => setMovieForm({ ...movieForm, language: event.target.value })} />
+            </div>
             <label className="block">
               <span className="mb-1.5 block text-xs font-semibold text-slate-300">Poster image</span>
               <span className="flex min-h-32 cursor-pointer items-center gap-4 rounded-xl border border-dashed border-slate-700 bg-slate-900/70 p-3 transition hover:border-violet-500/70">
@@ -247,7 +265,7 @@ export function ProgrammingSection({ view, movies, shows, polls, saving, perform
             <Button type="submit" disabled={saving} className="w-full">{editingMovie ? "Save movie" : "Add movie"}</Button>
           </form>
         </Card>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{movies.length === 0 && <Card><p className="text-sm text-slate-500">No movies in the library yet.</p></Card>}{movies.map((movie) => <Card key={movie.id} className="p-0"><img src={movie.poster_url} className="h-44 w-full object-cover" alt="" /><div className="p-4"><h3 className="font-black text-white">{movie.title}</h3><p className="mt-1 line-clamp-2 text-xs text-slate-500">{movie.description}</p><p className="mt-2 text-xs text-slate-400">{movie.duration_minutes} min</p><div className="mt-4 flex gap-2"><Button size="sm" variant="secondary" onClick={() => { if (posterPreview.startsWith("blob:")) URL.revokeObjectURL(posterPreview); setEditingMovie(movie.id); setMovieForm({ title: movie.title, description: movie.description, duration_minutes: String(movie.duration_minutes) }); setPosterFile(null); setPosterPreview(movie.poster_url); setPosterError(""); setPosterInputKey((key) => key + 1); }}>Edit</Button><Button size="sm" variant="danger" onClick={() => void perform(() => adminBackend.movies.delete(movie.id))}>Delete</Button></div></div></Card>)}</div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{movies.length === 0 && <Card><p className="text-sm text-slate-500">No movies in the library yet.</p></Card>}{movies.map((movie) => <Card key={movie.id} className="p-0"><img src={movie.poster_url} className="h-44 w-full object-cover" alt="" /><div className="p-4"><h3 className="font-black text-white">{movie.title}</h3><p className="mt-1 line-clamp-2 text-xs text-slate-500">{movie.description}</p><p className="mt-2 text-xs text-slate-400">{movie.duration_minutes} min · {movie.language} · {movie.certificate}</p><div className="mt-4 flex gap-2"><Button size="sm" variant="secondary" onClick={() => { if (posterPreview.startsWith("blob:")) URL.revokeObjectURL(posterPreview); setEditingMovie(movie.id); setMovieForm({ title: movie.title, description: movie.description, duration_minutes: String(movie.duration_minutes), certificate: movie.certificate, language: movie.language }); setPosterFile(null); setPosterPreview(movie.poster_url); setPosterError(""); setPosterInputKey((key) => key + 1); }}>Edit</Button><Button size="sm" variant="danger" onClick={() => void perform(() => adminBackend.movies.delete(movie.id))}>Delete</Button></div></div></Card>)}</div>
       </section>}
 
       {view === "poll" && <PollManagement movies={movies} polls={polls} saving={saving} perform={perform} />}
@@ -257,7 +275,7 @@ export function ProgrammingSection({ view, movies, shows, polls, saving, perform
 
 export type BookingView = "orders" | "reservations";
 
-export function BookingsSection({ view, bookings, movies, shows, perform }: SectionProps & { view: BookingView; bookings: BookingRow[]; movies: Movie[]; shows: ShowRow[] }) {
+export function BookingsSection({ view, bookings, movies, shows, perform, role }: SectionProps & { view: BookingView; bookings: BookingRow[]; movies: Movie[]; shows: ShowRow[]; role: AdminRole }) {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [movieFilter, setMovieFilter] = useState("");
@@ -291,7 +309,7 @@ export function BookingsSection({ view, bookings, movies, shows, perform }: Sect
   return (
     <section>
       <Subnav value={view} items={[
-        { id: "orders", label: "Bookings", to: "/admin/bookings/orders" },
+        ...(role === "super_admin" ? [{ id: "orders" as const, label: "Bookings", to: "/admin/bookings/orders" }] : []),
         { id: "reservations", label: "Reserve seats", to: "/admin/bookings/reservations" },
       ]} />
       {view === "orders" && <section className="mt-6"><div className="mb-5 grid gap-3 sm:grid-cols-[1fr_220px_170px_auto]"><label className="relative"><Search className="absolute left-4 top-3.5 h-4 w-4 text-slate-500" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search code, email or phone" className="w-full rounded-xl border border-slate-800 bg-slate-900 py-3 pl-11 pr-4 text-sm text-white" /></label><select value={movieFilter} onChange={(event) => setMovieFilter(event.target.value)} className="rounded-xl border border-slate-800 bg-slate-900 px-3 text-sm text-white"><option value="">All movies</option>{movies.map((movie) => <option key={movie.id} value={movie.id}>{movie.title}</option>)}</select><input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} className="rounded-xl border border-slate-800 bg-slate-900 px-3 text-sm text-white" /><Button variant="secondary" onClick={exportCsv}><Download className="h-4 w-4" /> Export CSV</Button></div><Card className="overflow-x-auto p-0"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-slate-900 text-xs uppercase text-slate-500"><tr>{["Booking", "Movie", "Customer", "Seats", "Amount", "Status", "Actions"].map((head) => <th key={head} className="px-4 py-3">{head}</th>)}</tr></thead><tbody className="divide-y divide-slate-800">{filtered.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-500">No bookings match these filters.</td></tr>}{filtered.map((booking) => <tr key={booking.id}><td className="px-4 py-3 font-mono text-[rgb(var(--booking-accent-text))]">{booking.booking_code}</td><td className="px-4 py-3 text-white">{booking.shows.movies.title}</td><td className="px-4 py-3 text-slate-300">{booking.customer_email}<br /><span className="text-xs text-slate-600">{booking.customer_phone || "No phone"}</span></td><td className="px-4 py-3 text-slate-300">{booking.booking_seats.map((seat) => seat.seat_number).join(", ")}</td><td className="px-4 py-3 text-white">INR {booking.total_amount}</td><td className="px-4 py-3 text-slate-300">{booking.status}</td><td className="px-4 py-3">{booking.status === "confirmed" ? <Button size="sm" variant="secondary" onClick={() => void perform(() => adminBackend.bookings.setStatus(booking.id, "cancelled"))}>Cancel</Button> : booking.status === "cancelled" ? <Button size="sm" variant="secondary" onClick={() => void perform(() => adminBackend.bookings.setStatus(booking.id, "confirmed"))}>Restore</Button> : null}</td></tr>)}</tbody></table></Card></section>}
@@ -329,7 +347,7 @@ export function BookingsSection({ view, bookings, movies, shows, perform }: Sect
 
 export type SetupView = "seats" | "booking" | "access";
 
-export function SetupSection({ view, seats, settings, admins, saving, perform }: SectionProps & { view: SetupView; seats: SeatRow[]; settings: AppSettings | null; admins: AdminAccess[] }) {
+export function SetupSection({ view, seats, settings, admins, saving, perform, role }: SectionProps & { view: SetupView; seats: SeatRow[]; settings: AppSettings | null; admins: AdminAccess[]; role: AdminRole }) {
   const emptySeat = { section_name: "", row_prefix: "", row_index: "1", col_index: "1", seat_number: "", category_name: "Gold" as SeatRow["category_name"], price: "120", status: "active", is_visible: true };
   const [form, setForm] = useState(emptySeat);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -338,12 +356,14 @@ export function SetupSection({ view, seats, settings, admins, saving, perform }:
     <section>
       <Subnav value={view} items={[
         { id: "seats", label: "Seat layout", to: "/admin/setup/seats" },
-        { id: "booking", label: "Booking & payments", to: "/admin/setup/booking" },
-        { id: "access", label: "Admin access", to: "/admin/setup/access" },
+        ...(role === "super_admin" ? [
+          { id: "booking" as const, label: "Booking & payments", to: "/admin/setup/booking" },
+          { id: "access" as const, label: "Admin access", to: "/admin/setup/access" },
+        ] : []),
       ]} />
       {view === "seats" && <section className="mt-6 grid gap-6 lg:grid-cols-[380px_1fr]"><Card><h2 className="font-black text-white">{editingId ? "Edit seat" : "Add seat"}</h2><form onSubmit={(event) => { event.preventDefault(); const payload = { ...form, row_index: Number(form.row_index), col_index: Number(form.col_index), price: Number(form.price) }; void perform(() => editingId ? adminBackend.seats.update(editingId, payload) : adminBackend.seats.create(payload)); }} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><Input label="Section" required value={form.section_name} onChange={(event) => setForm({ ...form, section_name: event.target.value })} /><Input label="Row" required value={form.row_prefix} onChange={(event) => setForm({ ...form, row_prefix: event.target.value })} /><Input label="Seat number" required value={form.seat_number} onChange={(event) => setForm({ ...form, seat_number: event.target.value })} /><Input label="Row index" type="number" required value={form.row_index} onChange={(event) => setForm({ ...form, row_index: event.target.value })} /><Input label="Column" type="number" required value={form.col_index} onChange={(event) => setForm({ ...form, col_index: event.target.value })} /><Input label="Base price" type="number" required value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /><select value={form.category_name} onChange={(event) => { const category = event.target.value as SeatRow["category_name"]; setForm({ ...form, category_name: category, price: category === "Gold" ? "120" : "80" }); }} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-3 text-sm text-white"><option>Gold</option><option>Silver</option></select><select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-3 text-sm text-white"><option value="active">Active</option><option value="disabled">Disabled</option></select><Button type="submit" disabled={saving}>{editingId ? "Save seat" : "Add seat"}</Button></form></Card><Card><div className="flex flex-wrap gap-2">{seats.map((seat) => <span key={seat.id} className={`inline-flex items-center overflow-hidden rounded-lg border text-xs font-bold ${seat.status === "active" ? "border-slate-700 bg-slate-900 text-white" : "border-slate-800 bg-slate-950 text-slate-600"}`}><button onClick={() => { setEditingId(seat.id); setForm({ section_name: seat.section_name, row_prefix: seat.row_prefix, row_index: String(seat.row_index), col_index: String(seat.col_index), seat_number: seat.seat_number, category_name: seat.category_name, price: String(seat.price), status: seat.status, is_visible: seat.is_visible }); }} className="px-3 py-2">{seat.seat_number} · {seat.category_name}</button><button onClick={() => void perform(() => adminBackend.seats.delete(seat.id))} className="border-l border-slate-700 px-2 py-2 text-rose-400">×</button></span>)}</div></Card></section>}
-      {view === "booking" && <ApplicationSettings view="booking" settings={settings} adminUsers={admins} saving={saving} perform={perform} />}
-      {view === "access" && <ApplicationSettings view="access" settings={settings} adminUsers={admins} saving={saving} perform={perform} />}
+      {role === "super_admin" && view === "booking" && <ApplicationSettings view="booking" settings={settings} adminUsers={admins} saving={saving} perform={perform} />}
+      {role === "super_admin" && view === "access" && <ApplicationSettings view="access" settings={settings} adminUsers={admins} saving={saving} perform={perform} />}
     </section>
   );
 }

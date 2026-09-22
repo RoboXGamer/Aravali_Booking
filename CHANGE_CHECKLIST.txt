@@ -1,0 +1,101 @@
+ARAVALLI AUDITORIUM - CHANGE CHECKLIST
+======================================
+
+Purpose
+-------
+Use this file to track every change requested during development.
+
+Status key
+----------
+[ ] Not started
+[~] In progress
+[x] Completed and verified
+[!] Blocked or needs a decision
+
+
+REQUESTED CHANGES
+=================
+
+Add new requests below using this format:
+
+[ ] Short description of the requested change
+    Requested: YYYY-MM-DD
+    Area: Customer site / Admin / Booking / Payment / Poll / Other
+    Details:
+    Files changed:
+    Verification:
+    Notes:
+
+
+CURRENT CHECKLIST
+=================
+
+No active change requests.
+
+
+COMPLETED CHANGES
+=================
+
+[x] Make the movie-poll time argument deployment-safe
+    Requested: 2026-09-10
+    Area: Poll / Convex deployment compatibility
+    Details: Accept the poll query with or without the time argument during frontend/backend version transitions.
+    Files changed: Convex public poll query validator.
+    Verification: Convex code generation, TypeScript check, and production build passed.
+    Notes: Prevents both extra-field and missing-field validation errors.
+
+[x] Make the active-poll fix compatible with the existing Convex deployment
+    Requested: 2026-09-10
+    Area: Customer site / Poll / Deployment compatibility
+    Details: Remove the new query argument rejected by the older deployed validator and enforce the active voting window in the frontend.
+    Files changed: Public poll query and movie-poll component.
+    Verification: Convex code generation, TypeScript check, and production build passed.
+    Notes: Closed, expired, future and older polls remain hidden from customers.
+
+[x] Show only an actively open movie poll on the public homepage
+    Requested: 2026-09-10
+    Area: Customer site / Poll
+    Details: Do not fall back to an older closed poll; hide the entire poll section when no voting window is currently active.
+    Files changed: Public poll query and movie-poll component.
+    Verification: Convex code generation, TypeScript check, and production build passed.
+    Notes: Future polls and expired polls are also hidden until their voting window is active.
+
+[x] Remove the seven-day revenue bar graph
+    Requested: 2026-09-10
+    Area: Admin / Dashboard
+    Details: Remove the graph while retaining today, weekly and monthly revenue totals.
+    Files changed: Dashboard component, dashboard styling, admin statistics query and service arguments.
+    Verification: Convex code generation, TypeScript check, and production build passed.
+    Notes:
+
+[x] Store a language and film certificate for every movie
+    Requested: 2026-09-10
+    Area: Movies / Admin / Database
+    Details: Support U, U/A and A certification plus a movie language field.
+    Files changed: Movie schema, serializers, seed data, admin movie form, migration.
+    Verification: Convex code generation, TypeScript check, and production build passed.
+    Notes: Existing records receive safe defaults through the one-time migration.
+
+[x] Show an 18+ warning before customers book an A-rated movie
+    Requested: 2026-09-10
+    Area: Customer site / Booking
+    Details: Require explicit age confirmation before entering seat booking.
+    Files changed: Showtime selection, ticket booking, reusable age-confirmation dialog.
+    Verification: TypeScript check and production build passed.
+    Notes: The gate also protects direct links to the seat-booking page.
+
+[x] Add Operations Admin and Super Admin roles
+    Requested: 2026-09-10
+    Area: Admin / Authentication / Authorization
+    Details: Operations Admins manage manual bookings, check-in, seats and polls. Super Admins retain all features and financial reporting.
+    Files changed: Admin schema, authentication, backend authorization, navigation, admin-access settings, migration.
+    Verification: Backend code generation, TypeScript check, and production build passed.
+    Notes: Existing administrators default to Super Admin for backward compatibility.
+
+[x] Add day, week and month revenue reporting with a graph
+    Requested: 2026-09-10
+    Area: Admin / Dashboard
+    Details: Financial reporting is visible only to Super Admins.
+    Files changed: Admin statistics query, dashboard cards, seven-day chart and responsive styling.
+    Verification: TypeScript check and production build passed.
+    Notes: Operations Admins cannot retrieve booking/revenue data through the admin query.

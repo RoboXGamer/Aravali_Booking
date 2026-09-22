@@ -36,6 +36,11 @@ export const getCurrentAdmin = query({
       .withIndex("by_email", (q) => q.eq("email", email))
       .unique();
     if (!admin?.isAdmin) return null;
-    return { id: user._id, email: user.email, name: user.name ?? null };
+    return {
+      id: user._id,
+      email: user.email,
+      name: user.name ?? null,
+      role: admin.role ?? "super_admin",
+    };
   },
 });

@@ -60,12 +60,17 @@ export const seedMovies = internalMutation({
     let updated = 0;
 
     for (const movie of movies) {
+      const values = {
+        ...movie,
+        certificate: "U" as const,
+        language: "Not specified",
+      };
       const existing = moviesByTitle.get(normalizeTitle(movie.title));
       if (existing) {
-        await ctx.db.patch("movies", existing._id, movie);
+        await ctx.db.patch("movies", existing._id, values);
         updated += 1;
       } else {
-        await ctx.db.insert("movies", movie);
+        await ctx.db.insert("movies", values);
         inserted += 1;
       }
     }

@@ -4,6 +4,7 @@ import { adminBackend } from "../../services/admin";
 import { Button } from "../common/Button";
 import { Card } from "../common/Card";
 import { Input } from "../common/Input";
+import type { AdminRole } from "../../types";
 
 export interface AppSettings {
   id: string | number;
@@ -16,6 +17,7 @@ export interface AdminAccess {
   id: string;
   email: string;
   isAdmin: boolean;
+  role: AdminRole;
 }
 
 interface Props {
@@ -35,6 +37,7 @@ const emptyForm = {
 export function ApplicationSettings({ view = "all", settings, adminUsers, saving, perform }: Props) {
   const [form, setForm] = useState(emptyForm);
   const [adminEmail, setAdminEmail] = useState("");
+  const [adminRole, setAdminRole] = useState<AdminRole>("operations");
 
   useEffect(() => {
     if (!settings) return;
@@ -56,7 +59,7 @@ export function ApplicationSettings({ view = "all", settings, adminUsers, saving
 
   const addAdmin = async (event: FormEvent) => {
     event.preventDefault();
-    const succeeded = await perform(() => adminBackend.admins.setAccess(adminEmail, true));
+    const succeeded = await perform(() => adminBackend.admins.setAccess(adminEmail, true, adminRole));
     if (succeeded) setAdminEmail("");
   };
 
@@ -77,22 +80,41 @@ export function ApplicationSettings({ view = "all", settings, adminUsers, saving
       {(view === "all" || view === "access") && <Card>
         <h3 className="font-black text-white">Administrator access</h3>
         <p className="mt-1 text-sm text-slate-400">Enable access before a new administrator creates their account.</p>
-        <form className="mt-5 flex gap-2" onSubmit={(event) => void addAdmin(event)}>
+        <form className="mt-5 grid gap-2 sm:grid-cols-[1fr_180px_auto]" onSubmit={(event) => void addAdmin(event)}>
           <Input label="Admin email" type="email" required value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} />
+          <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+            Role
+            <select value={adminRole} onChange={(event) => setAdminRole(event.target.value as AdminRole)} className="min-h-11 rounded-lg border border-slate-800 bg-slate-900 px-3 text-sm font-normal normal-case tracking-normal text-white">
+              <option value="operations">Operations Admin</option>
+              <option value="super_admin">Super Admin</option>
+            </select>
+          </label>
           <div className="flex items-end"><Button type="submit" disabled={saving}>Add</Button></div>
         </form>
         <div className="mt-5 divide-y divide-slate-800">
           {adminUsers.map((admin) => (
             <div key={admin.id} className="flex items-center justify-between gap-3 py-3">
-              <div><p className="text-sm font-semibold text-white">{admin.email}</p><p className="text-xs text-slate-500">{admin.isAdmin ? "Admin enabled" : "Admin disabled"}</p></div>
-              <Button
+              <div><p className="text-sm font-semibold text-white">{admin.email}</p><p className="text-xs text-slate-500">{admin.isAdmin ? `${admin.role === "super_admin" ? "Super Admin" : "Operations Admin"} · enabled` : "Admin disabled"}</p></div>
+              <div className="flex items-center gap-2">
+                <select
+                  aria-label={`Role for ${admin.email}`}
+                  value={admin.role}
+                  disabled={saving || !admin.isAdmin}
+                  onChange={(event) => void perform(() => adminBackend.admins.setAccess(admin.email, true, event.target.value as AdminRole))}
+                  className="min-h-9 rounded-lg border border-slate-800 bg-slate-900 px-2 text-xs text-white disabled:opacity-50"
+                >
+                  <option value="operations">Operations Admin</option>
+                  <option value="super_admin">Super Admin</option>
+                </select>
+                <Button
                 size="sm"
                 variant={admin.isAdmin ? "danger" : "secondary"}
                 disabled={saving}
-                onClick={() => void perform(() => adminBackend.admins.setAccess(admin.email, !admin.isAdmin))}
+                onClick={() => void perform(() => adminBackend.admins.setAccess(admin.email, !admin.isAdmin, admin.role))}
               >
                 {admin.isAdmin ? "Disable" : "Enable"}
               </Button>
+              </div>
             </div>
           ))}
         </div>
