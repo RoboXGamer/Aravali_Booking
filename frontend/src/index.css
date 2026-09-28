@@ -215,6 +215,63 @@
 
 .featured-movie-play:hover { background: #e5e7eb; }
 
+.featured-carousel-dots {
+  position: absolute;
+  z-index: 2;
+  right: 3.25%;
+  bottom: 9%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.featured-carousel-dot {
+  position: relative;
+  overflow: hidden;
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.48);
+  cursor: pointer;
+  transition: width 180ms ease, background 180ms ease;
+}
+
+.featured-carousel-dot.is-active {
+  width: 26px;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.featured-carousel-dot.is-active::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: white;
+  content: "";
+  transform: scaleX(0);
+  transform-origin: left center;
+  animation: featured-carousel-progress 5s linear forwards;
+}
+
+.featured-movie:hover .featured-carousel-dot.is-active::after,
+.featured-movie:focus-within .featured-carousel-dot.is-active::after {
+  animation-play-state: paused;
+}
+
+@keyframes featured-carousel-progress {
+  to { transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .featured-carousel-dot.is-active::after { animation: none; transform: scaleX(1); }
+}
+
+.featured-carousel-dot:focus-visible {
+  outline: 2px solid white;
+  outline-offset: 4px;
+}
+
 .featured-movie-empty,
 .featured-movie-skeleton {
   background:
@@ -296,6 +353,12 @@
 
   .featured-movie-content h1 {
     font-size: clamp(28px, 10vw, 44px);
+  }
+
+  .featured-carousel-dots {
+    right: 22px;
+    bottom: auto;
+    top: 20px;
   }
 
   .featured-movie-content p {

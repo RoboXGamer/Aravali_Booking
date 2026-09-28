@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "convex/react";
 import { CalendarX2, Ticket, WifiOff } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -10,9 +11,24 @@ import { MoviePoll } from "./MoviePoll";
 export function LandingPage() {
   const today = auditoriumToday();
   const shows = useQuery(api.events.listUpcoming, { today });
-  const upcomingShow = shows?.[0] ?? null;
+  const [activeShowIndex, setActiveShowIndex] = useState(0);
+  const [carouselPaused, setCarouselPaused] = useState(false);
+  const upcomingShows = shows ?? [];
+  const upcomingShow = upcomingShows[activeShowIndex] ?? upcomingShows[0] ?? null;
   const loadingTimedOut = useLoadingTimeout(shows === undefined);
   const isLoading = shows === undefined && !loadingTimedOut;
+
+  useEffect(() => {
+    setActiveShowIndex((index) => Math.min(index, Math.max(upcomingShows.length - 1, 0)));
+  }, [upcomingShows.length]);
+
+  useEffect(() => {
+    if (upcomingShows.length < 2 || carouselPaused || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setInterval(() => {
+      setActiveShowIndex((index) => (index + 1) % upcomingShows.length);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [carouselPaused, upcomingShows.length]);
 
   return (
     <div>
@@ -32,7 +48,17 @@ export function LandingPage() {
           </div>
         </section>
       ) : upcomingShow ? (
-        <section className="featured-movie">
+        <section
+          className="featured-movie"
+          aria-roledescription={upcomingShows.length > 1 ? "carousel" : undefined}
+          aria-label={upcomingShows.length > 1 ? "Upcoming shows" : undefined}
+          onMouseEnter={() => setCarouselPaused(true)}
+          onMouseLeave={() => setCarouselPaused(false)}
+          onFocusCapture={() => setCarouselPaused(true)}
+          onBlurCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setCarouselPaused(false);
+          }}
+        >
           {upcomingShow.poster_url && (
             <img
               src={upcomingShow.poster_url}
@@ -53,6 +79,21 @@ export function LandingPage() {
               </Link>
             </div>
           </div>
+          {upcomingShows.length > 1 && (
+            <div className="featured-carousel-dots" role="group" aria-label="Choose an upcoming show">
+              {upcomingShows.map((show, index) => (
+                <button
+                  key={show.id}
+                  type="button"
+                  className={`featured-carousel-dot${index === activeShowIndex ? " is-active" : ""}`}
+                  aria-label={`Show ${index + 1} of ${upcomingShows.length}: ${show.title}`}
+                  aria-current={index === activeShowIndex ? "true" : undefined}
+                  aria-valuetext={index === activeShowIndex ? "Next show in 5 seconds" : undefined}
+                  onClick={() => setActiveShowIndex(index)}
+                />
+              ))}
+            </div>
+          )}
         </section>
       ) : (
         <section className="featured-movie featured-movie-empty">
