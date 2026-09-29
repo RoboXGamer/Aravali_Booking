@@ -1,9 +1,10 @@
 import { ArrowLeft, Download, Search } from "lucide-react";
 import { useAction, useQuery } from "convex/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { Button } from "../components/common/Button";
+import { Input } from "../components/common/Input";
 import { Spinner } from "../components/common/Spinner";
 import type { Booking } from "../types";
 import "../confirmation.css";
@@ -65,11 +66,13 @@ export function Confirmation() {
   const routeState = (location.state || {}) as ConfirmationState;
   const storedEmail = booking_code ? sessionStorage.getItem(`aravalli.booking.email.${booking_code}`) : null;
   const storedReturnTo = booking_code ? sessionStorage.getItem(`aravalli.booking.returnTo.${booking_code}`) : null;
+  const [submittedEmail, setSubmittedEmail] = useState("");
+  const [lookupEmail, setLookupEmail] = useState(() => routeState.email || storedEmail || "");
   const requestedReturnTo = routeState.returnTo || storedReturnTo;
   const returnTo = requestedReturnTo === "/admin/bookings/reservations"
     ? requestedReturnTo
     : "/";
-  const email = routeState.email || storedEmail || "";
+  const email = submittedEmail || routeState.email || storedEmail || "";
   const fetchedBooking = useQuery(
     api.bookings.getByCode,
     !routeState.booking && booking_code && email ? { bookingCode: booking_code, email } : "skip",
@@ -81,6 +84,12 @@ export function Confirmation() {
   const [qrUrl, setQrUrl] = useState("");
   const [error, setError] = useState("");
   const automaticDownload = useRef("");
+
+  const submitBookingLookup = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError("");
+    setSubmittedEmail(lookupEmail.trim().toLowerCase());
+  };
 
   useEffect(() => {
     if (!booking || !booking_code || !email) return;
@@ -118,7 +127,20 @@ export function Confirmation() {
       <div className="mx-auto max-w-lg px-5 py-24 text-center">
         <Search className="mx-auto h-8 w-8 text-[rgb(var(--booking-accent-text))]" />
         <h1 className="mt-4 text-2xl font-black text-white">Retrieve your booking</h1>
-        <p className="mt-2 text-slate-400">{error || "Use your booking code and email address to reopen this ticket."}</p>
+        <p className="mt-2 text-slate-400">{error || (email && fetchedBooking === null
+          ? "We couldn't find a confirmed ticket with those details. Check the booking code and email, then try again."
+          : "Enter the email address used for this booking to reopen your ticket.")}</p>
+        {booking_code && <form onSubmit={submitBookingLookup} className="mt-6 space-y-4 text-left">
+          <Input
+            label="Booking email"
+            type="email"
+            required
+            autoComplete="email"
+            value={lookupEmail}
+            onChange={(event) => setLookupEmail(event.target.value)}
+          />
+          <Button className="w-full" type="submit" disabled={!lookupEmail.trim()}>Find my ticket</Button>
+        </form>}
         <Link to={returnTo}><Button className="mt-6">{returnTo.startsWith("/admin") ? "Return to reservations" : "Return home"}</Button></Link>
       </div>
     );
