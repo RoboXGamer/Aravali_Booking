@@ -10,6 +10,7 @@ import { Input } from "../components/common/Input";
 import { SeatControls, SeatMap } from "../components/common/SeatMap";
 import { Spinner } from "../components/common/Spinner";
 import { auditoriumToday } from "../lib/auditoriumDate";
+import { friendlyErrorMessage } from "../lib/friendlyError";
 import type { BookingCategory, Seat } from "../types";
 
 export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
@@ -85,6 +86,10 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
   const beginCheckout = async (event: FormEvent) => {
     event.preventDefault();
     if (!show || !settings || !selectedCategory || selectedIds.length === 0) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError("Please enter a valid email address.");
+      return;
+    }
     setSubmitting(true);
     setError("");
     try {
@@ -119,7 +124,10 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
       sessionStorage.setItem("aravalli.checkout", JSON.stringify(checkoutState));
       navigate("/checkout", { state: checkoutState });
     } catch (reason) {
-      setError((reason as Error).message);
+      setError(friendlyErrorMessage(
+        reason,
+        "We couldn't start your booking. Please check your details and try again.",
+      ));
     } finally {
       setSubmitting(false);
     }
@@ -177,7 +185,7 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
                 maxSelectable={settings.max_seats_per_booking}
               />
             </section>
-            {error && !detailsOpen && <p className="booking-inline-error">{error}</p>}
+            {error && !detailsOpen && <p className="booking-inline-error" role="alert" aria-live="polite">{error}</p>}
           </div>
 
           <SeatControls
@@ -250,7 +258,7 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
             <Input label="Email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
             <Input label="Phone (optional)" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" />
             <div className="booking-modal-summary"><span>{selectedSeats.map((seat) => seat.seat_number).join(", ")} · {selectedCategory} · {adminMode ? "No online payment required" : "Includes payment fee"}</span><strong>₹{total.toFixed(2)}</strong></div>
-            {error && <p className="booking-inline-error">{error}</p>}
+            {error && <p className="booking-inline-error" role="alert" aria-live="polite">{error}</p>}
             <button className="booking-checkout-button" type="submit" disabled={submitting || !name.trim() || !email.trim()}>
               <ShieldCheck /> {submitting ? (adminMode ? "Confirming booking..." : "Holding seats...") : (adminMode ? "Confirm booking" : "Continue to payment")}
             </button>
