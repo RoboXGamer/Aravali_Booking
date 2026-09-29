@@ -21,9 +21,11 @@ import type * as migrationAuditoriumLayout from "../migrationAuditoriumLayout.js
 import type * as migrationMovieMetadataAndAdminRoles from "../migrationMovieMetadataAndAdminRoles.js";
 import type * as migrationRemoveBronze from "../migrationRemoveBronze.js";
 import type * as migrationSeatSections from "../migrationSeatSections.js";
-import type * as payments from "../payments.js";
 import type * as paymentState from "../paymentState.js";
+import type * as payments from "../payments.js";
 import type * as polls from "../polls.js";
+import type * as razorpay from "../razorpay.js";
+import type * as seatAvailability from "../seatAvailability.js";
 import type * as seatLayout from "../seatLayout.js";
 import type * as seed from "../seed.js";
 import type * as test from "../test.js";
@@ -49,9 +51,11 @@ declare const fullApi: ApiFromModules<{
   migrationMovieMetadataAndAdminRoles: typeof migrationMovieMetadataAndAdminRoles;
   migrationRemoveBronze: typeof migrationRemoveBronze;
   migrationSeatSections: typeof migrationSeatSections;
-  payments: typeof payments;
   paymentState: typeof paymentState;
+  payments: typeof payments;
   polls: typeof polls;
+  razorpay: typeof razorpay;
+  seatAvailability: typeof seatAvailability;
   seatLayout: typeof seatLayout;
   seed: typeof seed;
   test: typeof test;
