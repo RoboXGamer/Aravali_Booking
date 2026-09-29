@@ -63,6 +63,7 @@ export interface CheckoutSession {
   total_amount: string | number;
   expires_at: string;
   razorpay_order_id: string;
+  access_token?: string;
 }
 
 export interface RazorpayOrder {
@@ -108,10 +109,7 @@ export interface Booking {
 }
 
 export interface PaymentVerificationResponse {
-  status: "success";
-  booking_id: string;
-  booking_code: string;
-  booking: Booking;
+  status: "processing";
 }
 
 export interface RazorpaySuccessResponse {

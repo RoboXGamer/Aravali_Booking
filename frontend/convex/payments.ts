@@ -2,7 +2,10 @@ import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { action } from "./_generated/server";
+import { action, internalAction, httpAction, type ActionCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
+import type { PaymentDecision, PaymentSnapshot } from "./paymentState";
+import { object, string, money, parsePayment, razorpayRequest, validSignature } from "./razorpay";
 import { env } from "./_generated/server";
 
 interface PreparedCheckout {
@@ -41,32 +44,11 @@ interface CheckoutResult {
     payment_fee: number;
     total_amount: number;
     expires_at: string;
+    access_token: string;
     razorpay_order_id: string;
   };
   selected_seats: PreparedCheckout["selectedSeats"];
   razorpay_order: { id: string; amount: number; currency: string };
-}
-
-function toHex(buffer: ArrayBuffer) {
-  return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-async function isValidSignature(orderId: string, paymentId: string, signature: string) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(env.RAZORPAY_SECRET),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${orderId}|${paymentId}`));
-  const expected = toHex(digest);
-  if (expected.length !== signature.length) return false;
-  let mismatch = 0;
-  for (let index = 0; index < expected.length; index += 1) {
-    mismatch |= expected.charCodeAt(index) ^ signature.charCodeAt(index);
-  }
-  return mismatch === 0;
 }
 
 export const createCheckout = action({
@@ -83,32 +65,21 @@ export const createCheckout = action({
     ),
   },
   handler: async (ctx, args): Promise<CheckoutResult> => {
+    const accessToken = crypto.randomUUID() + crypto.randomUUID();
     const prepared: PreparedCheckout = await ctx.runMutation(internal.bookings.prepareCheckout, {
       ...args,
       now: Date.now(),
+      accessToken,
     });
     try {
-      const auth = btoa(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_SECRET}`);
-      const response = await fetch("https://api.razorpay.com/v1/orders", {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${auth}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          amount: Math.round(prepared.totalAmount * 100),
-          currency: "INR",
-          receipt: prepared.sessionId,
-          notes: {
-            checkout_session_id: prepared.sessionId,
-            show_id: prepared.showId,
-          },
-        }),
-      });
-      if (!response.ok) throw new Error(`Razorpay rejected the order (${response.status}).`);
-      const order = await response.json() as { id?: unknown; amount?: unknown; currency?: unknown };
-      if (typeof order.id !== "string" || typeof order.amount !== "number" || typeof order.currency !== "string") {
-        throw new Error("Razorpay returned an invalid order.");
+      const response = object(await razorpayRequest("/orders", {
+        amount: Math.round(prepared.totalAmount * 100), currency: "INR", receipt: prepared.sessionId,
+        partial_payment: false,
+        notes: { checkout_session_id: prepared.sessionId, show_id: prepared.showId },
+      }));
+      const order = { id: string(response.id), amount: money(response.amount), currency: string(response.currency) };
+      if (order.amount !== Math.round(prepared.totalAmount * 100) || order.currency !== "INR") {
+        throw new Error("Razorpay order amount does not match checkout.");
       }
       await ctx.runMutation(internal.bookings.attachRazorpayOrder, {
         sessionId: prepared.sessionId,
@@ -126,6 +97,7 @@ export const createCheckout = action({
           payment_fee: prepared.paymentFee,
           total_amount: prepared.totalAmount,
           expires_at: new Date(prepared.expiresAt).toISOString(),
+          access_token: accessToken,
           razorpay_order_id: order.id,
         },
         selected_seats: prepared.selectedSeats,
@@ -138,34 +110,121 @@ export const createCheckout = action({
   },
 });
 
+async function processSession(ctx: ActionCtx, sessionId: Id<"checkoutSessions">, paymentId?: string): Promise<void> {
+  const workerToken = crypto.randomUUID();
+  const session: Doc<"checkoutSessions"> | null = await ctx.runMutation(internal.paymentState.claim, { sessionId, workerToken });
+  if (!session?.razorpayOrderId) return;
+  const worker = { sessionId, workerToken };
+  let failure: string | undefined;
+  try {
+    const response = object(await razorpayRequest(`/orders/${encodeURIComponent(session.razorpayOrderId)}/payments`));
+    if (!Array.isArray(response.items)) throw new Error("Invalid Razorpay payment list.");
+    const payments: PaymentSnapshot[] = response.items.map(parsePayment);
+    // A just-completed payment may not yet appear in the order listing.
+    if (paymentId && !payments.some(p => p.id === paymentId)) {
+      payments.push(parsePayment(await razorpayRequest(`/payments/${encodeURIComponent(paymentId)}`)));
+    }
+    const attempts: Doc<"paymentAttempts">[] = await ctx.runQuery(internal.paymentState.attempts, { sessionId });
+    for (const attempt of attempts) {
+      if (!payments.some(p => p.id === attempt.paymentId)) payments.push(parsePayment(
+        await razorpayRequest(`/payments/${encodeURIComponent(attempt.paymentId)}`)));
+    }
+    // Fulfil an already captured payment before considering another authorization.
+    payments.sort((a, b) => Number(b.status === "captured") - Number(a.status === "captured"));
+    for (let payment of payments) {
+      let decision: PaymentDecision = await ctx.runMutation(internal.paymentState.observe, { ...worker, payment });
+      if (decision.operation === "capture") {
+        // A lost response remains uncertain. The durable capture lock survives until the next fetch.
+        payment = parsePayment(await razorpayRequest(`/payments/${encodeURIComponent(payment.id)}/capture`, {
+          amount: payment.amount, currency: payment.currency,
+        }));
+        decision = await ctx.runMutation(internal.paymentState.observe, { ...worker, payment });
+      }
+      if (decision.operation === "refund") {
+        const attempt = attempts.find(p => p.paymentId === payment.id);
+        if (attempt?.refundId) {
+          const refund = object(await razorpayRequest(`/refunds/${encodeURIComponent(attempt.refundId)}`));
+          await ctx.runMutation(internal.paymentState.recordRefund, {
+            ...worker, paymentId: payment.id, refundId: string(refund.id), refundStatus: string(refund.status),
+          });
+          if (refund.status === "failed") continue; // requires operator review; never invent a new refund key
+        } else {
+          // Avoid overlapping an independently initiated dashboard refund.
+          const refunds = object(await razorpayRequest(`/payments/${encodeURIComponent(payment.id)}/refunds`));
+          if (!Array.isArray(refunds.items)) throw new Error("Invalid Razorpay refund list.");
+          if (refunds.items.some(r => object(r).status === "pending" || object(r).status === "created")) continue;
+          const refund = object(await razorpayRequest(`/payments/${encodeURIComponent(payment.id)}/refund`, {
+            amount: decision.refundAmount!, speed: "normal", notes: { reason: "Booking unavailable or cancelled", checkout_session_id: sessionId },
+          }, { "X-Refund-Idempotency": decision.refundKey! }));
+          await ctx.runMutation(internal.paymentState.recordRefund, {
+            ...worker, paymentId: payment.id, refundId: string(refund.id), refundStatus: string(refund.status),
+          });
+        }
+        // Only the provider's current payment balance establishes completion of a full refund.
+        payment = parsePayment(await razorpayRequest(`/payments/${encodeURIComponent(payment.id)}`));
+        await ctx.runMutation(internal.paymentState.observe, { ...worker, payment });
+      }
+    }
+  } catch (error) {
+    failure = error instanceof Error ? error.message : "Payment reconciliation failed.";
+  } finally {
+    await ctx.runMutation(internal.paymentState.finish, { ...worker, ...(failure ? { error: failure } : {}) });
+  }
+}
+
+export const reconcile = internalAction({
+  args: { sessionId: v.id("checkoutSessions") },
+  handler: async (ctx, args): Promise<null> => { await processSession(ctx, args.sessionId); return null; },
+});
+
 export const verify = action({
   args: {
-    razorpayOrderId: v.string(),
-    razorpayPaymentId: v.string(),
-    razorpaySignature: v.string(),
-    checkoutSessionId: v.id("checkoutSessions"),
+    razorpayOrderId: v.string(), razorpayPaymentId: v.string(), razorpaySignature: v.string(), checkoutSessionId: v.id("checkoutSessions"),
   },
-  handler: async (ctx, args): Promise<{
-    status: "success";
-    booking_id: Id<"bookings">;
-    booking_code: string;
-    customer_email: string;
-  }> => {
-    if (!await isValidSignature(args.razorpayOrderId, args.razorpayPaymentId, args.razorpaySignature)) {
-      throw new Error("Invalid Razorpay payment signature.");
-    }
-    const finalized: { bookingId: Id<"bookings">; bookingCode: string; email: string } = await ctx.runMutation(internal.bookings.finalizePaidCheckout, {
-      orderId: args.razorpayOrderId,
-      paymentId: args.razorpayPaymentId,
-      signature: args.razorpaySignature,
-      checkoutSessionId: args.checkoutSessionId,
-      now: Date.now(),
-    });
-    return {
-      status: "success" as const,
-      booking_id: finalized.bookingId,
-      booking_code: finalized.bookingCode,
-      customer_email: finalized.email,
-    };
+  handler: async (ctx, args): Promise<{ status: "processing" }> => {
+    const session: Doc<"checkoutSessions"> | null = await ctx.runQuery(internal.paymentState.read, { sessionId: args.checkoutSessionId });
+    // Use our stored order ID for HMAC, never an order ID chosen by the browser.
+    if (!session?.razorpayOrderId || session.razorpayOrderId !== args.razorpayOrderId || !await validSignature(
+      `${session.razorpayOrderId}|${args.razorpayPaymentId}`, args.razorpaySignature, env.RAZORPAY_SECRET,
+    )) throw new Error("Invalid Razorpay payment signature.");
+    await processSession(ctx, session._id, args.razorpayPaymentId);
+    return { status: "processing" };
   },
 });
+
+const webhookEvents = new Set([
+  "payment.authorized", "payment.captured", "payment.failed", "order.paid",
+  "refund.created", "refund.processed", "refund.failed",
+]);
+
+export const webhook = httpAction(async (ctx, request) => {
+  if (!env.RAZORPAY_WEBHOOK_SECRET) return new Response("Webhook not configured", { status: 503 });
+  const raw = await request.text();
+  if (raw.length > 256_000) return new Response("Payload too large", { status: 413 });
+  const signature = request.headers.get("x-razorpay-signature") ?? "";
+  const valid = await validSignature(raw, signature, env.RAZORPAY_WEBHOOK_SECRET)
+    || (!!env.RAZORPAY_WEBHOOK_PREVIOUS_SECRET && await validSignature(raw, signature, env.RAZORPAY_WEBHOOK_PREVIOUS_SECRET));
+  if (!valid) return new Response("Invalid signature", { status: 400 });
+  try {
+    const event = object(JSON.parse(raw) as unknown);
+    const eventType = string(event.event);
+    if (!webhookEvents.has(eventType)) return new Response("Ignored", { status: 200 });
+    const eventId = request.headers.get("x-razorpay-event-id");
+    if (!eventId || eventId.length > 200) return new Response("Missing event ID", { status: 400 });
+    const payload = object(event.payload);
+    let orderId: string;
+    if (payload.payment) orderId = string(object(object(payload.payment).entity).order_id);
+    else if (payload.order) orderId = string(object(object(payload.order).entity).id);
+    else {
+      const refund = object(object(payload.refund).entity);
+      const payment = parsePayment(await razorpayRequest(`/payments/${encodeURIComponent(string(refund.payment_id))}`));
+      orderId = payment.orderId;
+    }
+    await ctx.runMutation(internal.paymentState.receiveWebhook, { eventId, eventType, orderId });
+    return new Response("Accepted", { status: 200 });
+  } catch {
+    // Non-2xx makes Razorpay retry; acknowledge only after durable persistence.
+    return new Response("Unable to persist event", { status: 503 });
+  }
+});
+

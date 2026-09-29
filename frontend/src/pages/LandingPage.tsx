@@ -12,7 +12,6 @@ export function LandingPage() {
   const today = auditoriumToday();
   const shows = useQuery(api.events.listUpcoming, { today });
   const [activeShowIndex, setActiveShowIndex] = useState(0);
-  const [carouselPaused, setCarouselPaused] = useState(false);
   const upcomingShows = shows ?? [];
   const upcomingShow = upcomingShows[activeShowIndex] ?? upcomingShows[0] ?? null;
   const loadingTimedOut = useLoadingTimeout(shows === undefined);
@@ -23,12 +22,12 @@ export function LandingPage() {
   }, [upcomingShows.length]);
 
   useEffect(() => {
-    if (upcomingShows.length < 2 || carouselPaused || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (upcomingShows.length < 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const timer = window.setInterval(() => {
       setActiveShowIndex((index) => (index + 1) % upcomingShows.length);
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [carouselPaused, upcomingShows.length]);
+  }, [upcomingShows.length]);
 
   return (
     <div>
@@ -52,12 +51,6 @@ export function LandingPage() {
           className="featured-movie"
           aria-roledescription={upcomingShows.length > 1 ? "carousel" : undefined}
           aria-label={upcomingShows.length > 1 ? "Upcoming shows" : undefined}
-          onMouseEnter={() => setCarouselPaused(true)}
-          onMouseLeave={() => setCarouselPaused(false)}
-          onFocusCapture={() => setCarouselPaused(true)}
-          onBlurCapture={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setCarouselPaused(false);
-          }}
         >
           {upcomingShow.poster_url && (
             <img

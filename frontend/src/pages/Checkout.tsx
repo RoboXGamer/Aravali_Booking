@@ -1,7 +1,9 @@
 import { ArrowLeft, Clock3, CreditCard, ShieldCheck } from "lucide-react";
-import { useAction } from "convex/react";
-import { useEffect, useMemo, useState } from "react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 
 import { Button } from "../components/common/Button";
 import { Card } from "../components/common/Card";
@@ -34,10 +36,73 @@ export function Checkout() {
   const navigate = useNavigate();
   const razorpayLoaded = useRazorpay();
   const verifyPayment = useAction(api.payments.verify);
-  const checkout = useMemo(() => loadCheckoutState(location.state), [location.state]);
+  const refreshPayment = useMutation(api.paymentState.refresh);
+  const checkout = useMemo(() => {
+    const candidate = loadCheckoutState(location.state);
+    const requested = new URLSearchParams(location.hash.slice(1)).get("session");
+    return requested && candidate?.checkout_session.id !== requested ? null : candidate;
+  }, [location.state, location.hash]);
   const [secondsLeft, setSecondsLeft] = useState(() => getSecondsRemaining(checkout));
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState("");
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const opening = useRef(false);
+  const hash = useMemo(() => new URLSearchParams(location.hash.slice(1)), [location.hash]);
+  const sessionId = hash.get("session") || checkout?.checkout_session.id;
+  const accessToken = hash.get("token") || checkout?.checkout_session.access_token;
+  const credentials = sessionId && accessToken ? { sessionId: sessionId as Id<"checkoutSessions">, accessToken } : null;
+  const paymentState = useQuery(api.paymentState.status, credentials ?? "skip");
+
+  useEffect(() => {
+    if (checkout?.checkout_session.access_token && !hash.get("session")) {
+      const params = new URLSearchParams({ session: checkout.checkout_session.id, token: checkout.checkout_session.access_token });
+      navigate({ pathname: "/checkout", hash: params.toString() }, { replace: true, state: location.state });
+    }
+  }, [checkout, hash, location.state, navigate]);
+
+  useEffect(() => {
+    if (!sessionId || !accessToken) return;
+    const refresh = () => { void refreshPayment({ sessionId: sessionId as Id<"checkoutSessions">, accessToken }).catch(() => {}); };
+    refresh();
+    const timer = window.setInterval(refresh, 30_000);
+    return () => window.clearInterval(timer);
+  }, [sessionId, accessToken, refreshPayment]);
+
+  useEffect(() => {
+    if (!paymentState?.bookingCode) return;
+    sessionStorage.removeItem("aravalli.checkout");
+    sessionStorage.setItem(`aravalli.booking.email.${paymentState.bookingCode}`, paymentState.customerEmail);
+    navigate(`/confirmation/${paymentState.bookingCode}`, { replace: true, state: { email: paymentState.customerEmail } });
+  }, [paymentState, navigate]);
+
+  const copyRecoveryLink = async () => {
+    try { await navigator.clipboard.writeText(window.location.href); setCopied(true); }
+    catch { setError("Copy the address from your browser to save this payment status link."); }
+  };
+  const statusMessage = paymentState === null
+    ? "This payment status link is invalid. Check the link or contact the auditorium with your payment reference."
+    : paymentState?.status === "refunded"
+    ? "Your payment has been refunded. Your bank may take additional time to show the credit."
+    : paymentState?.status === "review" || paymentState?.needsAttention
+        ? "Your payment needs review. Please keep this reference and contact the auditorium if it remains unresolved."
+      : paymentState?.status === "refund_pending"
+        ? "Your booking could not be completed or was cancelled. Your refund is being processed."
+        : paymentState?.status === "expired" || paymentState?.status === "failed"
+            ? "The seat hold has ended. We will continue checking any payment already started; any collected payment without a booking will be refunded."
+          : paymentState?.status === "capturing" || verifying
+            ? "We are checking your payment and reserving your ticket. You can reopen this link to see the result."
+            : "Your payment status will update here automatically.";
+
+  const statusPanel = <div className="mt-4 rounded-xl border border-slate-700 bg-slate-900 p-4 text-sm text-slate-300" role="status">
+    <p>{statusMessage}</p>
+    {paymentState?.orderId && <p className="mt-2 break-all text-xs">Payment reference: {paymentState.orderId}</p>}
+    {credentials && <div className="mt-3 flex flex-wrap gap-3">
+      <button type="button" className="text-violet-300 underline" onClick={() => void refreshPayment(credentials).catch(() => setError("Unable to refresh. Please try again."))}>Check status</button>
+      <button type="button" className="text-violet-300 underline" onClick={() => void copyRecoveryLink()}>{copied ? "Link copied" : "Save status link"}</button>
+    </div>}
+    <p className="mt-2 text-xs text-slate-500">Keep this link private.</p>
+  </div>;
 
   useEffect(() => {
     if (!checkout) return;
@@ -51,8 +116,9 @@ export function Checkout() {
     return (
       <div className="grid min-h-screen place-items-center bg-[rgb(var(--booking-background))] px-5 text-center">
         <div className="max-w-md">
-          <h1 className="text-2xl font-black text-white">Checkout session not found</h1>
-          <p className="mt-3 text-slate-400">Choose your seats again to start a new checkout.</p>
+          <h1 className="text-2xl font-black text-white">{credentials ? "Payment status" : "Checkout session not found"}</h1>
+          {credentials ? statusPanel : <p className="mt-3 text-slate-400">Choose your seats again to start a new checkout.</p>}
+          {error && <p className="mt-3 text-rose-300">{error}</p>}
           <Button className="mt-6" onClick={() => navigate("/")}>Return home</Button>
         </div>
       </div>
@@ -65,53 +131,69 @@ export function Checkout() {
   const seconds = (secondsLeft % 60).toString().padStart(2, "0");
 
   const openPayment = () => {
-    if (!razorpayLoaded || expired) return;
+    if (!razorpayLoaded || expired || opening.current || !credentials || paymentState?.status !== "pending") return;
+    opening.current = true;
+    setPaymentOpen(true);
     setError("");
 
-    const razorpay = new window.Razorpay({
-      key: import.meta.env.VITE_RAZORPAY_KEY_ID || "",
-      amount: order.amount,
-      currency: order.currency,
-      name: "Aravalli Auditorium",
-      description: `${show.title} · ${seats.map((seat) => seat.seat_number).join(", ")}`,
-      order_id: order.id,
-      prefill: {
-        name: session.customer_name,
-        email: session.customer_email,
-        contact: session.customer_phone || "",
-      },
-      theme: { color: "#8B5CF6" },
-      modal: { ondismiss: () => setError("Payment window closed. Your seats remain held until the timer expires.") },
-      handler: async (response: RazorpaySuccessResponse) => {
+    try {
+      const razorpay = new window.Razorpay({
+        key: import.meta.env.VITE_RAZORPAY_KEY_ID || "",
+        amount: order.amount,
+        currency: order.currency,
+        name: "Aravalli Auditorium",
+        description: `${show.title} · ${seats.map((seat) => seat.seat_number).join(", ")}`,
+        order_id: order.id,
+        timeout: getSecondsRemaining(checkout),
+        retry: { enabled: false },
+        prefill: {
+          name: session.customer_name,
+          email: session.customer_email,
+          contact: session.customer_phone || "",
+        },
+        theme: { color: "#8B5CF6" },
+        modal: { ondismiss: () => {
+          opening.current = false;
+          setPaymentOpen(false);
+          setError("Payment window closed. Any payment already started is still being checked.");
+          void refreshPayment(credentials).catch(() => {});
+        } },
+        handler: async (response: RazorpaySuccessResponse) => {
+          setVerifying(true);
+          try {
+            await verifyPayment({
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
+              checkoutSessionId: session.id as Id<"checkoutSessions">,
+            });
+          } catch (reason) {
+            setError((reason as Error).message);
+          } finally {
+            opening.current = false;
+            setPaymentOpen(false);
+            void refreshPayment(credentials).catch(() => {});
+          }
+        },
+      });
+      razorpay.on("payment.failed", () => {
+        setError("The payment attempt did not complete. Its final status is still being checked.");
         setVerifying(true);
-        try {
-          const verified = await verifyPayment({
-            razorpayOrderId: response.razorpay_order_id,
-            razorpayPaymentId: response.razorpay_payment_id,
-            razorpaySignature: response.razorpay_signature,
-            checkoutSessionId: session.id as Id<"checkoutSessions">,
-          });
-          sessionStorage.removeItem("aravalli.checkout");
-          sessionStorage.setItem(`aravalli.booking.email.${verified.booking_code}`, session.customer_email);
-          navigate(`/confirmation/${verified.booking_code}`, {
-            replace: true,
-            state: { email: session.customer_email },
-          });
-        } catch (reason) {
-          setError((reason as Error).message);
-          setVerifying(false);
-        }
-      },
-    });
-    razorpay.open();
+        void refreshPayment(credentials).catch(() => {});
+      });
+      razorpay.open();
+    }
+    catch { opening.current = false; setPaymentOpen(false); setError("Unable to open payment. Please try again."); }
   };
 
-  if (verifying) {
+  if (verifying || (paymentState && paymentState.status !== "pending")) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[rgb(var(--booking-background))] px-5 text-center">
-        <Spinner size="lg" />
-        <h1 className="text-xl font-bold text-white">Confirming your booking</h1>
-        <p className="text-sm text-slate-400">Do not close or refresh this page.</p>
+        {(paymentState?.status === "pending" || paymentState?.status === "capturing") && <Spinner size="lg" />}
+        <h1 className="text-xl font-bold text-white">Payment status</h1>
+        <div className="w-full max-w-lg">{statusPanel}</div>
+        {error && <p className="text-sm text-rose-300">{error}</p>}
+        <Button variant="secondary" onClick={() => navigate("/")}>Return home</Button>
       </div>
     );
   }
@@ -158,7 +240,7 @@ export function Checkout() {
           </div>
 
           <div className="mt-4 border-t border-[rgb(var(--booking-border)/0.13)] pt-3">
-            <p className="text-xs font-semibold text-slate-500">Ticket delivery</p>
+            <p className="text-xs font-semibold text-slate-500">Booking email</p>
             <p className="mt-1 break-all text-sm text-slate-100">{session.customer_email}</p>
           </div>
         </section>
@@ -179,7 +261,9 @@ export function Checkout() {
           </dl>
 
           {error && <p className="mt-4 rounded-lg border border-rose-500/25 bg-rose-500/10 p-3 text-xs leading-5 text-rose-300">{error}</p>}
-          <Button onClick={openPayment} disabled={!razorpayLoaded || expired} className="mt-5 w-full gap-2 py-3">
+          {statusPanel}
+          {!credentials && <p className="mt-3 text-rose-300">This checkout was created before the payment update. Start a new booking; contact the auditorium if you already paid.</p>}
+          <Button onClick={openPayment} disabled={!razorpayLoaded || expired || paymentOpen || !credentials || paymentState?.status !== "pending"} className="mt-5 w-full gap-2 py-3">
             <CreditCard className="h-4 w-4" /> {razorpayLoaded ? "Pay with Razorpay" : "Loading payment…"}
           </Button>
           <p className="mt-3 flex items-center justify-center gap-2 text-[10px] text-slate-500"><ShieldCheck className="h-3 w-3" /> Payment verified securely</p>
@@ -188,5 +272,3 @@ export function Checkout() {
     </div>
   );
 }
-import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";

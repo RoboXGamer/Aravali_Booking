@@ -27,6 +27,8 @@ import type { DataModel } from "./dataModel.js";
 type Env = {
   readonly RAZORPAY_KEY_ID: string;
   readonly RAZORPAY_SECRET: string;
+  readonly RAZORPAY_WEBHOOK_SECRET?: string;
+  readonly RAZORPAY_WEBHOOK_PREVIOUS_SECRET?: string;
   readonly SITE_URL: string;
 };
 

@@ -1,4 +1,6 @@
 import { internalMutation } from "./_generated/server";
+import { preserveCheckoutItems } from "./paymentState";
+import { releaseSeatHolds } from "./seatAvailability";
 
 export const runMinuteTasks = internalMutation({
   args: {},
@@ -6,15 +8,12 @@ export const runMinuteTasks = internalMutation({
     const now = Date.now();
     const expired = await ctx.db
       .query("checkoutSessions")
-      .withIndex("by_status_and_expiresAt", (q) => q.eq("status", "pending").lt("expiresAt", now))
+      .withIndex("by_status_and_expiresAt", (q) => q.eq("status", "pending").lte("expiresAt", now))
       .take(100);
     for (const session of expired) {
+      await preserveCheckoutItems(ctx, session);
       await ctx.db.patch("checkoutSessions", session._id, { status: "expired" });
-      const seats = await ctx.db
-        .query("checkoutSessionSeats")
-        .withIndex("by_checkoutSessionId", (q) => q.eq("checkoutSessionId", session._id))
-        .take(100);
-      for (const seat of seats) await ctx.db.delete("checkoutSessionSeats", seat._id);
+      await releaseSeatHolds(ctx, session._id);
     }
 
     const duePolls = await ctx.db

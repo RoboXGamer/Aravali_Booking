@@ -77,24 +77,9 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
   const showCategoryGuidance = (seat: Seat) => {
     const message = selectedCategory
       ? `This seat is in the ${seat.category_name} section. Choose a matching category to unlock it.`
-      : "Choose a ticket category first, then select your seats.";
+      : "Choose a ticket category to unlock seats in its section.";
     setToast(message);
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = window.setTimeout(() => setToast(""), 3500);
-
-    window.requestAnimationFrame(() => {
-      const selectors = Array.from(
-        document.querySelectorAll<HTMLElement>("[data-category-selector]"),
-      );
-      const selector = selectors.find((element) => element.getClientRects().length > 0);
-      if (!selector) return;
-      selector.scrollIntoView({ behavior: "smooth", block: "center" });
-      selector.classList.remove("is-attention");
-      void selector.offsetWidth;
-      selector.classList.add("is-attention");
-      window.setTimeout(() => selector.classList.remove("is-attention"), 1400);
-      window.setTimeout(() => selector.querySelector<HTMLButtonElement>("button")?.focus(), 450);
-    });
   };
 
   const beginCheckout = async (event: FormEvent) => {
@@ -230,16 +215,30 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
       </main>
 
       {toast && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed left-1/2 top-4 z-[80] flex w-[calc(100%-32px)] max-w-md -translate-x-1/2 items-start gap-3 rounded-xl border border-violet-400/35 bg-slate-950/95 px-4 py-3 text-sm font-semibold text-slate-100 shadow-2xl shadow-black/50 backdrop-blur"
-        >
-          <CircleAlert className="mt-0.5 h-5 w-5 shrink-0 text-violet-400" />
-          <span>{toast}</span>
-          <button type="button" onClick={() => setToast("")} aria-label="Dismiss message" className="ml-auto text-slate-500 hover:text-white">
-            <X className="h-4 w-4" />
-          </button>
+        <div className="booking-guidance-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setToast(""); }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="booking-guidance-title" aria-describedby="booking-guidance-description" className="booking-guidance-modal">
+            <CircleAlert className="booking-guidance-icon" />
+            <h2 id="booking-guidance-title">Which ticket category do you want?</h2>
+            <p id="booking-guidance-description">{toast}</p>
+            <div className="booking-guidance-categories booking-category-options" aria-label="Choose ticket category">
+              {settings.ticket_categories.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  className={selectedCategory === category.id ? "is-active" : ""}
+                  onClick={() => {
+                    chooseCategory(category.id);
+                    setToast("");
+                  }}
+                >
+                  {category.id} · ₹{category.price}
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={() => setToast("")} aria-label="Dismiss message" className="booking-guidance-close">
+              <X />
+            </button>
+          </div>
         </div>
       )}
 

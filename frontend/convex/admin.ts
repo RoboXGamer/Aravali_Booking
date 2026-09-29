@@ -3,6 +3,8 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { seatConflict } from "./seatAvailability";
 import { auditoriumDate, ensureSettings, getSettings, moviePosterUrl, requireAdmin, requireSuperAdmin } from "./lib";
 
 const nullableString = v.union(v.string(), v.null());
@@ -134,6 +136,7 @@ export const getSection = query({
       customer_phone: string | null;
       total_amount: number;
       status: Doc<"bookings">["status"];
+      can_restore: boolean;
       created_at: string;
       is_checked_in: boolean;
       checked_in_at: string | null;
@@ -197,6 +200,7 @@ export const getSection = query({
         const bookingSeats = await ctx.db.query("bookingSeats")
           .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
           .take(100);
+        const checkout = await ctx.db.get("checkoutSessions", booking.checkoutSessionId);
         result.bookings.push({
           id: booking._id,
           booking_code: booking.bookingCode,
@@ -205,6 +209,7 @@ export const getSection = query({
           customer_phone: booking.customerPhone,
           total_amount: booking.totalAmount,
           status: booking.status,
+          can_restore: booking.status === "cancelled" && !!checkout && !checkout.razorpayOrderId,
           created_at: new Date(booking.createdAt).toISOString(),
           is_checked_in: booking.isCheckedIn,
           checked_in_at: booking.checkedInAt ? new Date(booking.checkedInAt).toISOString() : null,
@@ -379,6 +384,9 @@ export const deleteShow = mutation({
   args: { showId: v.id("shows") },
   handler: async (ctx, args) => {
     await requireSuperAdmin(ctx);
+    const financialHistory = await ctx.db.query("checkoutSessions")
+      .withIndex("by_showId", q => q.eq("showId", args.showId)).first();
+    if (financialHistory) throw new Error("Shows with checkout history must be disabled, not deleted, so payments and refunds remain traceable.");
     const bookings = await ctx.db
       .query("bookings")
       .withIndex("by_showId", (q) => q.eq("showId", args.showId))
@@ -481,14 +489,8 @@ export const reserveSeat = mutation({
   args: { showId: v.id("shows"), seatId: v.id("seats"), reason: nullableString },
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
-    const existing = await ctx.db.query("reservations")
-      .withIndex("by_showId_and_seatId", (q) => q.eq("showId", args.showId).eq("seatId", args.seatId)).unique();
-    if (existing) throw new Error("Seat is already reserved for this show.");
-    const bookingSeats = await ctx.db.query("bookingSeats")
-      .withIndex("by_showId_and_seatId", (q) => q.eq("showId", args.showId).eq("seatId", args.seatId)).take(10);
-    for (const row of bookingSeats) {
-      if ((await ctx.db.get("bookings", row.bookingId))?.status === "confirmed") throw new Error("Seat is already booked.");
-    }
+    const conflict = await seatConflict(ctx, args.showId, args.seatId, Date.now());
+    if (conflict) throw new Error(conflict);
     return await ctx.db.insert("reservations", { ...args, createdBy: admin.email });
   },
 });
@@ -508,20 +510,15 @@ export const setBookingStatus = mutation({
     await requireSuperAdmin(ctx);
     const booking = await ctx.db.get("bookings", args.bookingId);
     if (!booking) throw new Error("Booking not found.");
+    const session = await ctx.db.get("checkoutSessions", booking.checkoutSessionId);
     if (args.status === "confirmed" && booking.status === "cancelled") {
-      const seats = await ctx.db.query("bookingSeats").withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id)).take(100);
+      if (session?.razorpayOrderId) throw new Error("An online booking cancelled for refund cannot be restored. Create a new booking.");
+      const show = await ctx.db.get("shows", booking.showId);
+      if (!show?.isEnabled || show.date < auditoriumDate(Date.now())) throw new Error("This show is no longer available.");
+      const seats = await ctx.db.query("bookingSeats").withIndex("by_bookingId", q => q.eq("bookingId", booking._id)).take(101);
       for (const seat of seats) {
-        const reservations = await ctx.db.query("reservations")
-          .withIndex("by_showId_and_seatId", (q) => q.eq("showId", booking.showId).eq("seatId", seat.seatId)).unique();
-        if (reservations) throw new Error(`${seat.seatNumber} is reserved and this booking cannot be restored.`);
-        const rows = await ctx.db.query("bookingSeats")
-          .withIndex("by_showId_and_seatId", (q) => q.eq("showId", booking.showId).eq("seatId", seat.seatId)).take(10);
-        for (const row of rows) {
-          if (row.bookingId === booking._id) continue;
-          if ((await ctx.db.get("bookings", row.bookingId))?.status === "confirmed") {
-            throw new Error(`${seat.seatNumber} has been sold again and this booking cannot be restored.`);
-          }
-        }
+        const conflict = await seatConflict(ctx, booking.showId, seat.seatId, Date.now(), undefined, booking._id);
+        if (conflict) throw new Error(conflict);
       }
     }
     if (args.status !== booking.status) {
@@ -538,6 +535,10 @@ export const setBookingStatus = mutation({
       }
     }
     await ctx.db.patch("bookings", booking._id, { status: args.status });
+    if (args.status === "cancelled" && session?.razorpayOrderId && session.status !== "refunded") {
+      await ctx.db.patch("checkoutSessions", session._id, { status: "refund_pending", nextReconcileAt: Date.now() });
+      await ctx.scheduler.runAfter(0, internal.payments.reconcile, { sessionId: session._id });
+    }
     return null;
   },
 });
@@ -550,9 +551,9 @@ export const updateSettings = mutation({
   },
   handler: async (ctx, args) => {
     await requireSuperAdmin(ctx);
-    if (args.maxSeatsPerBooking < 1 || args.maxSeatsPerBooking > 20) throw new Error("Booking limit must be between 1 and 20.");
-    if (args.seatHoldMinutes < 1 || args.seatHoldMinutes > 30) throw new Error("Seat hold must be between 1 and 30 minutes.");
-    if (args.razorpayFeePercentage < 0) throw new Error("Payment fee cannot be negative.");
+    if (!Number.isInteger(args.maxSeatsPerBooking) || args.maxSeatsPerBooking < 1 || args.maxSeatsPerBooking > 20) throw new Error("Booking limit must be a whole number between 1 and 20.");
+    if (!Number.isFinite(args.seatHoldMinutes) || args.seatHoldMinutes < 1 || args.seatHoldMinutes > 30) throw new Error("Seat hold must be between 1 and 30 minutes.");
+    if (!Number.isFinite(args.razorpayFeePercentage) || args.razorpayFeePercentage < 0 || args.razorpayFeePercentage > 100) throw new Error("Payment fee must be between 0 and 100 percent.");
     const current = await ensureSettings(ctx);
     await ctx.db.patch("appSettings", current._id, args);
     return null;
@@ -660,9 +661,11 @@ export const deletePoll = mutation({
 });
 
 export const checkIn = mutation({
-  args: { bookingCode: v.string(), now: v.number() },
+  args: { bookingCode: v.string() },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
+    const now = Date.now();
+    const today = auditoriumDate(now);
     const bookingCode = args.bookingCode.trim().toUpperCase();
     const booking = await ctx.db.query("bookings")
       .withIndex("by_bookingCode", (q) => q.eq("bookingCode", bookingCode)).unique();
@@ -680,9 +683,24 @@ export const checkIn = mutation({
       };
     }
     const show = await ctx.db.get("shows", booking.showId);
-    if (!show || show.date < auditoriumDate(args.now)) {
+    if (!show || show.date < today) {
       return {
         status: "show_ended" as const,
+        booking_code: booking.bookingCode,
+        customer_name: booking.customerName,
+      };
+    }
+    if (show.date > today) {
+      return {
+        status: "show_not_started" as const,
+        booking_code: booking.bookingCode,
+        customer_name: booking.customerName,
+      };
+    }
+    const checkout = await ctx.db.get("checkoutSessions", booking.checkoutSessionId);
+    if (!checkout || (checkout.razorpayOrderId && checkout.status !== "paid")) {
+      return {
+        status: "payment_unconfirmed" as const,
         booking_code: booking.bookingCode,
         customer_name: booking.customerName,
       };
@@ -697,12 +715,12 @@ export const checkIn = mutation({
           : null,
       };
     }
-    await ctx.db.patch("bookings", booking._id, { isCheckedIn: true, checkedInAt: args.now });
+    await ctx.db.patch("bookings", booking._id, { isCheckedIn: true, checkedInAt: now });
     return {
       status: "success" as const,
       booking_code: booking.bookingCode,
       customer_name: booking.customerName,
-      checked_in_at: new Date(args.now).toISOString(),
+      checked_in_at: new Date(now).toISOString(),
     };
   },
 });

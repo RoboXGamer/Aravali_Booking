@@ -98,7 +98,7 @@ export const adminBackend = {
   bookings: {
     setStatus: (id: string, status: "confirmed" | "cancelled") =>
       convex.mutation(api.admin.setBookingStatus, { bookingId: id as Id<"bookings">, status }),
-    checkIn: (bookingCode: string) => convex.mutation(api.admin.checkIn, { bookingCode, now: Date.now() }),
+    checkIn: (bookingCode: string) => convex.mutation(api.admin.checkIn, { bookingCode }),
   },
   settings: {
     update: (input: {

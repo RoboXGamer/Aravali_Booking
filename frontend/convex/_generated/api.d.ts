@@ -22,6 +22,7 @@ import type * as migrationMovieMetadataAndAdminRoles from "../migrationMovieMeta
 import type * as migrationRemoveBronze from "../migrationRemoveBronze.js";
 import type * as migrationSeatSections from "../migrationSeatSections.js";
 import type * as payments from "../payments.js";
+import type * as paymentState from "../paymentState.js";
 import type * as polls from "../polls.js";
 import type * as seatLayout from "../seatLayout.js";
 import type * as seed from "../seed.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   migrationRemoveBronze: typeof migrationRemoveBronze;
   migrationSeatSections: typeof migrationSeatSections;
   payments: typeof payments;
+  paymentState: typeof paymentState;
   polls: typeof polls;
   seatLayout: typeof seatLayout;
   seed: typeof seed;

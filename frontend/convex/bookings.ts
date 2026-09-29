@@ -1,4 +1,6 @@
 import { v } from "convex/values";
+import { seatConflict, releaseSeatHolds } from "./seatAvailability";
+import { internal } from "./_generated/api";
 
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
@@ -53,7 +55,7 @@ async function validateBookingRequest(
   const uniqueSeatIds = [...new Set(args.seatIds)];
   if (!uniqueSeatIds.length) throw new Error("Select at least one seat.");
   if (uniqueSeatIds.length !== args.seatIds.length) throw new Error("The same seat cannot be selected twice.");
-  if (uniqueSeatIds.length > maximumSeats) {
+  if (uniqueSeatIds.length > Math.min(maximumSeats, 100)) {
     throw new Error(`You can select up to ${maximumSeats} seats.`);
   }
 
@@ -71,31 +73,8 @@ async function validateBookingRequest(
       throw new Error(`${seat.seatNumber} is not available for ${selectedTicketCategory.id}.`);
     }
 
-    const reservation = await ctx.db
-      .query("reservations")
-      .withIndex("by_showId_and_seatId", (q) => q.eq("showId", args.showId).eq("seatId", seatId))
-      .unique();
-    if (reservation) throw new Error(`${seat.seatNumber} is reserved.`);
-
-    const booked = await ctx.db
-      .query("bookingSeats")
-      .withIndex("by_showId_and_seatId", (q) => q.eq("showId", args.showId).eq("seatId", seatId))
-      .take(10);
-    for (const row of booked) {
-      const booking = await ctx.db.get("bookings", row.bookingId);
-      if (booking?.status === "confirmed") throw new Error(`${seat.seatNumber} is already booked.`);
-    }
-
-    const holds = await ctx.db
-      .query("checkoutSessionSeats")
-      .withIndex("by_showId_and_seatId", (q) => q.eq("showId", args.showId).eq("seatId", seatId))
-      .take(10);
-    for (const hold of holds) {
-      const session = await ctx.db.get("checkoutSessions", hold.checkoutSessionId);
-      if (session?.status === "pending" && session.expiresAt > now) {
-        throw new Error(`${seat.seatNumber} is currently held by another customer.`);
-      }
-    }
+    const conflict = await seatConflict(ctx, args.showId, seatId, now);
+    if (conflict) throw new Error(conflict);
 
     selectedSeats.push(seat);
   }
@@ -147,24 +126,22 @@ export const getAvailability = query({
       .take(1000);
     const reservationIds = new Set(reservations.map((row) => row.seatId));
 
-    const bookedRows = await ctx.db
+    const bookedRows = ctx.db
       .query("bookingSeats")
-      .withIndex("by_showId_and_seatId", (q) => q.eq("showId", args.showId))
-      .take(1000);
+      .withIndex("by_showId_and_seatId", (q) => q.eq("showId", args.showId));
     const bookedIds = new Set<string>();
-    for (const row of bookedRows) {
+    for await (const row of bookedRows) {
       const booking = await ctx.db.get("bookings", row.bookingId);
       if (booking?.status === "confirmed") bookedIds.add(row.seatId);
     }
 
-    const heldRows = await ctx.db
+    const heldRows = ctx.db
       .query("checkoutSessionSeats")
-      .withIndex("by_showId_and_seatId", (q) => q.eq("showId", args.showId))
-      .take(1000);
+      .withIndex("by_showId_and_seatId", (q) => q.eq("showId", args.showId));
     const heldIds = new Set<string>();
-    for (const row of heldRows) {
+    for await (const row of heldRows) {
       const session = await ctx.db.get("checkoutSessions", row.checkoutSessionId);
-      if (session?.status === "pending") heldIds.add(row.seatId);
+      if (session?.status === "pending" || session?.status === "capturing") heldIds.add(row.seatId);
     }
 
     const visibleSeats = seats.filter((seat) => seat.isVisible).map((seat) => ({
@@ -199,7 +176,7 @@ export const getAvailability = query({
 });
 
 export const prepareCheckout = internalMutation({
-  args: { ...checkoutArgs, now: v.number() },
+  args: { ...checkoutArgs, now: v.number(), accessToken: v.string() },
   handler: async (ctx, args) => {
     const settings = await ensureSettings(ctx);
     const { customerName, customerEmail, customerPhone, selectedSeats, selectedTicketCategory } =
@@ -209,6 +186,9 @@ export const prepareCheckout = internalMutation({
     const paymentFee = roundMoney(subtotal * settings.razorpayFeePercentage / 100);
     const total = roundMoney(subtotal + paymentFee);
     const expiresAt = args.now + settings.seatHoldMinutes * 60_000;
+    if (!Number.isSafeInteger(Math.round(total * 100)) || total <= 0 || !Number.isFinite(expiresAt) || expiresAt <= args.now) {
+      throw new Error("Booking settings are invalid. Please contact the auditorium.");
+    }
     const sessionId = await ctx.db.insert("checkoutSessions", {
       showId: args.showId,
       customerName,
@@ -219,8 +199,17 @@ export const prepareCheckout = internalMutation({
       totalAmount: total,
       status: "pending",
       expiresAt,
+      accessToken: args.accessToken,
+      reconciliationVersion: 1,
     });
     for (const seat of selectedSeats) {
+      await ctx.db.insert("checkoutItems", {
+        checkoutSessionId: sessionId,
+        seatId: seat._id,
+        seatNumber: seat.seatNumber,
+        categoryName: seat.categoryName,
+        price: selectedTicketCategory.price,
+      });
       await ctx.db.insert("checkoutSessionSeats", {
         checkoutSessionId: sessionId,
         showId: args.showId,
@@ -261,9 +250,10 @@ export const createAdminBooking = mutation({
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
+    const now = Date.now();
     const settings = await ensureSettings(ctx);
     const { show, customerName, customerEmail, customerPhone, selectedSeats, selectedTicketCategory } =
-      await validateBookingRequest(ctx, args, args.now, settings.maxSeatsPerBooking);
+      await validateBookingRequest(ctx, args, now, settings.maxSeatsPerBooking);
     const subtotal = roundMoney(selectedSeats.length * selectedTicketCategory.price);
 
     const checkoutSessionId = await ctx.db.insert("checkoutSessions", {
@@ -275,9 +265,10 @@ export const createAdminBooking = mutation({
       paymentFee: 0,
       totalAmount: subtotal,
       status: "paid",
-      expiresAt: args.now,
+      expiresAt: now,
+      reconciliationVersion: 1,
     });
-    const bookingCode = `ARA${new Date(args.now).getUTCFullYear()}${checkoutSessionId.slice(-8).toUpperCase()}`;
+    const bookingCode = `ARA${new Date(now).getUTCFullYear()}${checkoutSessionId.toUpperCase()}`;
     const bookingId = await ctx.db.insert("bookings", {
       bookingCode,
       showId: args.showId,
@@ -291,7 +282,7 @@ export const createAdminBooking = mutation({
       status: "confirmed",
       isCheckedIn: false,
       checkedInAt: null,
-      createdAt: args.now,
+      createdAt: now,
     });
 
     for (const seat of selectedSeats) {
@@ -324,13 +315,22 @@ export const attachRazorpayOrder = internalMutation({
   handler: async (ctx, args) => {
     const session = await ctx.db.get("checkoutSessions", args.sessionId);
     if (!session || session.status !== "pending") throw new Error("Checkout session is no longer active.");
-    await ctx.db.patch("checkoutSessions", args.sessionId, { razorpayOrderId: args.orderId });
+    if (session.razorpayOrderId) {
+      if (session.razorpayOrderId !== args.orderId) throw new Error("Checkout already has an order.");
+      return null;
+    }
+    await ctx.db.patch("checkoutSessions", args.sessionId, {
+      razorpayOrderId: args.orderId,
+      nextReconcileAt: Date.now() + 30_000,
+      reconcileUntil: Date.now() + 4 * 24 * 60 * 60_000,
+    });
     await ctx.db.insert("payments", {
       checkoutSessionId: args.sessionId,
       providerOrderId: args.orderId,
       amount: args.amount,
       status: "created",
     });
+    await ctx.scheduler.runAfter(30_000, internal.payments.reconcile, { sessionId: args.sessionId });
     return null;
   },
 });
@@ -339,92 +339,11 @@ export const releaseCheckout = internalMutation({
   args: { sessionId: v.id("checkoutSessions") },
   handler: async (ctx, args) => {
     const session = await ctx.db.get("checkoutSessions", args.sessionId);
-    if (session?.status === "pending") await ctx.db.patch("checkoutSessions", args.sessionId, { status: "failed" });
-    const heldSeats = await ctx.db
-      .query("checkoutSessionSeats")
-      .withIndex("by_checkoutSessionId", (q) => q.eq("checkoutSessionId", args.sessionId))
-      .take(100);
-    for (const held of heldSeats) await ctx.db.delete("checkoutSessionSeats", held._id);
+    if (session?.status === "pending") {
+      await ctx.db.patch("checkoutSessions", args.sessionId, { status: "failed" });
+      await releaseSeatHolds(ctx, args.sessionId);
+    }
     return null;
-  },
-});
-
-export const finalizePaidCheckout = internalMutation({
-  args: {
-    orderId: v.string(),
-    paymentId: v.string(),
-    signature: v.string(),
-    checkoutSessionId: v.id("checkoutSessions"),
-    now: v.number(),
-  },
-  handler: async (ctx, args) => {
-    const session = await ctx.db.get("checkoutSessions", args.checkoutSessionId);
-    if (!session || session.razorpayOrderId !== args.orderId) throw new Error("Payment does not match this checkout.");
-    const existing = await ctx.db
-      .query("bookings")
-      .withIndex("by_checkoutSessionId", (q) => q.eq("checkoutSessionId", args.checkoutSessionId))
-      .unique();
-    if (existing) return {
-      bookingId: existing._id,
-      bookingCode: existing.bookingCode,
-      email: existing.customerEmail,
-    };
-    if (session.status !== "pending") throw new Error("Checkout session is no longer active.");
-
-    const heldSeats = await ctx.db
-      .query("checkoutSessionSeats")
-      .withIndex("by_checkoutSessionId", (q) => q.eq("checkoutSessionId", args.checkoutSessionId))
-      .take(100);
-    if (!heldSeats.length) throw new Error("No seats remain attached to this checkout.");
-    const bookedSeatPrice = roundMoney(session.subtotal / heldSeats.length);
-    const bookingCode = `ARA${new Date(args.now).getUTCFullYear()}${args.checkoutSessionId.slice(-8).toUpperCase()}`;
-    const bookingId = await ctx.db.insert("bookings", {
-      bookingCode,
-      showId: session.showId,
-      checkoutSessionId: session._id,
-      customerName: session.customerName,
-      customerEmail: session.customerEmail,
-      customerPhone: session.customerPhone,
-      subtotal: session.subtotal,
-      paymentFee: session.paymentFee,
-      totalAmount: session.totalAmount,
-      status: "confirmed",
-      isCheckedIn: false,
-      checkedInAt: null,
-      createdAt: args.now,
-    });
-    for (const held of heldSeats) {
-      const seat = await ctx.db.get("seats", held.seatId);
-      if (!seat) throw new Error("A selected seat no longer exists.");
-      await ctx.db.insert("bookingSeats", {
-        bookingId,
-        showId: session.showId,
-        seatId: seat._id,
-        seatNumber: seat.seatNumber,
-        categoryName: seat.categoryName,
-        price: bookedSeatPrice,
-      });
-      await ctx.db.delete("checkoutSessionSeats", held._id);
-    }
-    const show = await ctx.db.get("shows", session.showId);
-    if (show) {
-      await ctx.db.patch("shows", show._id, {
-        soldSeats: (show.soldSeats ?? 0) + heldSeats.length,
-      });
-    }
-    await ctx.db.patch("checkoutSessions", session._id, { status: "paid" });
-    const payment = await ctx.db
-      .query("payments")
-      .withIndex("by_providerOrderId", (q) => q.eq("providerOrderId", args.orderId))
-      .unique();
-    if (payment) {
-      await ctx.db.patch("payments", payment._id, {
-        providerPaymentId: args.paymentId,
-        providerSignature: args.signature,
-        status: "paid",
-      });
-    }
-    return { bookingId, bookingCode, email: session.customerEmail };
   },
 });
 

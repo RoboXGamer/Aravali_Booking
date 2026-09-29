@@ -68,12 +68,64 @@ export default defineSchema({
       v.literal("paid"),
       v.literal("expired"),
       v.literal("failed"),
+      v.literal("capturing"),
+      v.literal("refund_pending"),
+      v.literal("refunded"),
+      v.literal("review"),
     ),
     expiresAt: v.number(),
     razorpayOrderId: v.optional(v.string()),
+    accessToken: v.optional(v.string()),
+    capturePaymentId: v.optional(v.string()),
+    nextReconcileAt: v.optional(v.number()),
+    reconcileUntil: v.optional(v.number()),
+    workerToken: v.optional(v.string()),
+    workerUntil: v.optional(v.number()),
+    lastRefreshAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    needsAttention: v.optional(v.boolean()),
+    reconciliationVersion: v.optional(v.number()),
   })
     .index("by_status_and_expiresAt", ["status", "expiresAt"])
-    .index("by_razorpayOrderId", ["razorpayOrderId"]),
+    .index("by_razorpayOrderId", ["razorpayOrderId"])
+    .index("by_nextReconcileAt", ["nextReconcileAt"])
+    .index("by_showId", ["showId"])
+    .index("by_needsAttention", ["needsAttention"])
+    .index("by_reconciliationVersion", ["reconciliationVersion"]),
+
+  checkoutItems: defineTable({
+    checkoutSessionId: v.id("checkoutSessions"),
+    seatId: v.id("seats"),
+    seatNumber: v.string(),
+    categoryName: seatCategory,
+    price: v.number(),
+  }).index("by_checkoutSessionId", ["checkoutSessionId"]),
+
+  paymentAttempts: defineTable({
+    checkoutSessionId: v.id("checkoutSessions"),
+    paymentId: v.string(),
+    orderId: v.string(),
+    amount: v.number(),
+    currency: v.string(),
+    providerStatus: v.string(),
+    disposition: v.union(v.literal("pending"), v.literal("booked"), v.literal("refund_pending"), v.literal("refunded"), v.literal("review")),
+    refundKey: v.optional(v.string()),
+    refundAmount: v.optional(v.number()),
+    refundId: v.optional(v.string()),
+    refundStatus: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_paymentId", ["paymentId"])
+    .index("by_checkoutSessionId", ["checkoutSessionId"]),
+
+  paymentWebhookEvents: defineTable({
+    eventId: v.string(),
+    eventType: v.string(),
+    orderId: v.string(),
+    receivedAt: v.number(),
+    status: v.union(v.literal("received"), v.literal("queued"), v.literal("unmatched")),
+    nextAttemptAt: v.optional(v.number()),
+  }).index("by_eventId", ["eventId"])
+    .index("by_nextAttemptAt", ["nextAttemptAt"]),
 
   checkoutSessionSeats: defineTable({
     checkoutSessionId: v.id("checkoutSessions"),

@@ -51,6 +51,10 @@ const checkInOutcomeMessage = (
         : "This ticket has already been checked in.";
     case "show_ended":
       return "Check-in has closed because the show date has ended.";
+    case "show_not_started":
+      return "This ticket is for a future show date. Check-in opens on the date printed on the ticket.";
+    case "payment_unconfirmed":
+      return "Payment is not confirmed for this ticket. Ask a Super Admin to review the payment before admitting the customer.";
     default:
       return null;
   }
