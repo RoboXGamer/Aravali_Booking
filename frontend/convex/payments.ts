@@ -13,7 +13,7 @@ interface PreparedCheckout {
   showId: Id<"shows">;
   customerName: string;
   customerEmail: string;
-  customerPhone: string | null;
+  customerPhone: string;
   subtotal: number;
   paymentFee: number;
   totalAmount: number;
@@ -39,7 +39,7 @@ interface CheckoutResult {
     show_id: Id<"shows">;
     customer_name: string;
     customer_email: string;
-    customer_phone: string | null;
+    customer_phone: string;
     subtotal: number;
     payment_fee: number;
     total_amount: number;
@@ -56,7 +56,7 @@ export const createCheckout = action({
     showId: v.id("shows"),
     customerName: v.string(),
     customerEmail: v.string(),
-    customerPhone: v.union(v.string(), v.null()),
+    customerPhone: v.string(),
     seatIds: v.array(v.id("seats")),
     bookingCategory: v.union(
       v.literal("Gold"),

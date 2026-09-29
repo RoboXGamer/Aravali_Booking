@@ -86,6 +86,10 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
   const beginCheckout = async (event: FormEvent) => {
     event.preventDefault();
     if (!show || !settings || !selectedCategory || selectedIds.length === 0) return;
+    if (!phone.trim()) {
+      setError("Please enter a phone number.");
+      return;
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setError("Please enter a valid email address.");
       return;
@@ -98,7 +102,7 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
           showId: show.id as Id<"shows">,
           customerName: name.trim(),
           customerEmail: email.trim().toLowerCase(),
-          customerPhone: phone.trim() || null,
+          customerPhone: phone.trim(),
           seatIds: selectedIds as Id<"seats">[],
           bookingCategory: selectedCategory!,
           now: Date.now(),
@@ -116,7 +120,7 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
         showId: show.id as Id<"shows">,
         customerName: name.trim(),
         customerEmail: email.trim().toLowerCase(),
-        customerPhone: phone.trim() || null,
+        customerPhone: phone.trim(),
         seatIds: selectedIds as Id<"seats">[],
         bookingCategory: selectedCategory!,
       });
@@ -256,7 +260,7 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
             <div className="booking-modal-header"><div><span>{adminMode ? "Final step" : "Step 3 of 4"}</span><h2>Your details</h2></div><button type="button" onClick={() => setDetailsOpen(false)} aria-label="Close"><X /></button></div>
             <Input label="Full name" required value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" />
             <Input label="Email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
-            <Input label="Phone (optional)" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" />
+            <Input label="Phone number" type="tel" required value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" />
             <div className="booking-modal-summary"><span>{selectedSeats.map((seat) => seat.seat_number).join(", ")} · {selectedCategory} · {adminMode ? "No online payment required" : "Includes payment fee"}</span><strong>₹{total.toFixed(2)}</strong></div>
             {error && <p className="booking-inline-error" role="alert" aria-live="polite">{error}</p>}
             <button className="booking-checkout-button" type="submit" disabled={submitting || !name.trim() || !email.trim()}>

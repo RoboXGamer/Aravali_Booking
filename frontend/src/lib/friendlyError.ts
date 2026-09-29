@@ -9,6 +9,10 @@ export function friendlyErrorMessage(
     return "Please enter a valid email address.";
   }
 
+  if (normalized.includes("enter a phone number")) {
+    return "Please enter a phone number.";
+  }
+
   if (
     normalized.includes("already booked")
     || normalized.includes("already held")

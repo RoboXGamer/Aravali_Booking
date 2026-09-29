@@ -26,7 +26,7 @@ const checkoutArgs = {
   showId: v.id("shows"),
   customerName: v.string(),
   customerEmail: v.string(),
-  customerPhone: v.union(v.string(), v.null()),
+  customerPhone: v.string(),
   seatIds: v.array(v.id("seats")),
   bookingCategory,
 };
@@ -35,7 +35,7 @@ interface BookingRequest {
   showId: Id<"shows">;
   customerName: string;
   customerEmail: string;
-  customerPhone: string | null;
+  customerPhone: string;
   seatIds: Id<"seats">[];
   bookingCategory: BookingCategory;
 }
@@ -62,6 +62,8 @@ async function validateBookingRequest(
   const customerName = args.customerName.trim();
   if (customerName.length < 2) throw new Error("Enter the customer's full name.");
   const customerEmail = normalizeEmail(args.customerEmail);
+  const customerPhone = args.customerPhone.trim();
+  if (!customerPhone) throw new Error("Enter a phone number.");
   const selectedSeats: Doc<"seats">[] = [];
   const selectedTicketCategory = ticketCategories.find((category) => category.id === args.bookingCategory);
   if (!selectedTicketCategory) throw new Error("Select a valid ticket category.");
@@ -83,7 +85,7 @@ async function validateBookingRequest(
     show,
     customerName,
     customerEmail,
-    customerPhone: args.customerPhone?.trim() || null,
+    customerPhone,
     selectedSeats,
     selectedTicketCategory,
   };
