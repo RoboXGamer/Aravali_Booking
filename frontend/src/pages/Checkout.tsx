@@ -46,7 +46,6 @@ export function Checkout() {
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState("");
   const [paymentOpen, setPaymentOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
   const opening = useRef(false);
   const hash = useMemo(() => new URLSearchParams(location.hash.slice(1)), [location.hash]);
   const sessionId = hash.get("session") || checkout?.checkout_session.id;
@@ -76,33 +75,21 @@ export function Checkout() {
     navigate(`/confirmation/${paymentState.bookingCode}`, { replace: true, state: { email: paymentState.customerEmail } });
   }, [paymentState, navigate]);
 
-  const copyRecoveryLink = async () => {
-    try { await navigator.clipboard.writeText(window.location.href); setCopied(true); }
-    catch { setError("Copy the address from your browser to save this payment status link."); }
-  };
   const statusMessage = paymentState === null
-    ? "This payment status link is invalid. Check the link or contact the auditorium with your payment reference."
+    ? "This payment status link is invalid. Please contact the auditorium."
     : paymentState?.status === "refunded"
-    ? "Your payment has been refunded. Your bank may take additional time to show the credit."
+    ? "Your payment was refunded. Your bank may take additional time to show the credit."
     : paymentState?.status === "review" || paymentState?.needsAttention
-        ? "Your payment needs review. Please keep this reference and contact the auditorium if it remains unresolved."
+        ? "Your payment needs review. Please contact the auditorium."
       : paymentState?.status === "refund_pending"
-        ? "Your booking could not be completed or was cancelled. Your refund is being processed."
+        ? "Your refund is being processed."
         : paymentState?.status === "expired" || paymentState?.status === "failed"
-            ? "The seat hold has ended. We will continue checking any payment already started; any collected payment without a booking will be refunded."
+            ? "The seat hold expired. Any captured payment without a ticket will be refunded."
           : paymentState?.status === "capturing" || verifying
-            ? "We are checking your payment and reserving your ticket. You can reopen this link to see the result."
-            : "Your payment status will update here automatically.";
+            ? "Confirming your payment…"
+            : "Your payment is processing…";
 
-  const statusPanel = <div className="mt-4 rounded-xl border border-slate-700 bg-slate-900 p-4 text-sm text-slate-300" role="status">
-    <p>{statusMessage}</p>
-    {paymentState?.orderId && <p className="mt-2 break-all text-xs">Payment reference: {paymentState.orderId}</p>}
-    {credentials && <div className="mt-3 flex flex-wrap gap-3">
-      <button type="button" className="text-violet-300 underline" onClick={() => void refreshPayment(credentials).catch(() => setError("Unable to refresh. Please try again."))}>Check status</button>
-      <button type="button" className="text-violet-300 underline" onClick={() => void copyRecoveryLink()}>{copied ? "Link copied" : "Save status link"}</button>
-    </div>}
-    <p className="mt-2 text-xs text-slate-500">Keep this link private.</p>
-  </div>;
+  const paymentMessage = <p className="mt-4 text-center text-sm text-slate-400" role="status">{statusMessage}</p>;
 
   useEffect(() => {
     if (!checkout) return;
@@ -117,7 +104,7 @@ export function Checkout() {
       <div className="grid min-h-screen place-items-center bg-[rgb(var(--booking-background))] px-5 text-center">
         <div className="max-w-md">
           <h1 className="text-2xl font-black text-white">{credentials ? "Payment status" : "Checkout session not found"}</h1>
-          {credentials ? statusPanel : <p className="mt-3 text-slate-400">Choose your seats again to start a new checkout.</p>}
+          {credentials ? paymentMessage : <p className="mt-3 text-slate-400">Choose your seats again to start a new checkout.</p>}
           {error && <p className="mt-3 text-rose-300">{error}</p>}
           <Button className="mt-6" onClick={() => navigate("/")}>Return home</Button>
         </div>
@@ -191,7 +178,7 @@ export function Checkout() {
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[rgb(var(--booking-background))] px-5 text-center">
         {(paymentState?.status === "pending" || paymentState?.status === "capturing") && <Spinner size="lg" />}
         <h1 className="text-xl font-bold text-white">Payment status</h1>
-        <div className="w-full max-w-lg">{statusPanel}</div>
+        <div className="w-full max-w-lg">{paymentMessage}</div>
         {error && <p className="text-sm text-rose-300">{error}</p>}
         <Button variant="secondary" onClick={() => navigate("/")}>Return home</Button>
       </div>
@@ -261,7 +248,6 @@ export function Checkout() {
           </dl>
 
           {error && <p className="mt-4 rounded-lg border border-rose-500/25 bg-rose-500/10 p-3 text-xs leading-5 text-rose-300">{error}</p>}
-          {statusPanel}
           {!credentials && <p className="mt-3 text-rose-300">This checkout was created before the payment update. Start a new booking; contact the auditorium if you already paid.</p>}
           <Button onClick={openPayment} disabled={!razorpayLoaded || expired || paymentOpen || !credentials || paymentState?.status !== "pending"} className="mt-5 w-full gap-2 py-3">
             <CreditCard className="h-4 w-4" /> {razorpayLoaded ? "Pay with Razorpay" : "Loading payment…"}
