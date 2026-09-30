@@ -79,7 +79,17 @@ because a previous response was lost.
 Checkout displays a private status link with a bearer token in the URL fragment.
 It can be reopened after leaving the site, even without the original tab's
 session storage. Keep that link private. Ticket confirmation is driven by live
-backend state. Automatic ticket email delivery is not implemented.
+backend state. After payment, the same secret opens the private ticket link at
+`/confirmation/BOOKING_CODE#token=SECRET`. Only SHA-256 hashes of access secrets
+are stored in checkout sessions and bookings. Booking code alone cannot retrieve
+the ticket, QR, PDF or JPG. Customers can copy the private link and download their
+ticket; the confirmation page still attempts automatic downloads.
+
+Guest booking does not collect or store name, email or phone, and does not prefill
+those details into Razorpay. Razorpay may collect information in its own payment
+interface. Admin authentication email addresses remain necessary for staff access.
+If the ticket and private link are both lost, staff must review payment evidence;
+show and seat selection alone is not proof of ownership.
 
 ## Administration and existing data
 

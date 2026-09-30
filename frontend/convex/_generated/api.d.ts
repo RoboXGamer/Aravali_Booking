@@ -24,11 +24,13 @@ import type * as migrationSeatSections from "../migrationSeatSections.js";
 import type * as paymentState from "../paymentState.js";
 import type * as payments from "../payments.js";
 import type * as polls from "../polls.js";
+import type * as privacyMaintenance from "../privacyMaintenance.js";
 import type * as razorpay from "../razorpay.js";
 import type * as seatAvailability from "../seatAvailability.js";
 import type * as seatLayout from "../seatLayout.js";
 import type * as seed from "../seed.js";
 import type * as test from "../test.js";
+import type * as ticketAccess from "../ticketAccess.js";
 import type * as tickets from "../tickets.js";
 
 import type {
@@ -54,11 +56,13 @@ declare const fullApi: ApiFromModules<{
   paymentState: typeof paymentState;
   payments: typeof payments;
   polls: typeof polls;
+  privacyMaintenance: typeof privacyMaintenance;
   razorpay: typeof razorpay;
   seatAvailability: typeof seatAvailability;
   seatLayout: typeof seatLayout;
   seed: typeof seed;
   test: typeof test;
+  ticketAccess: typeof ticketAccess;
   tickets: typeof tickets;
 }>;
 

@@ -1,12 +1,11 @@
-import { ArrowLeft, CalendarDays, ChevronRight, CircleAlert, Clock3, MapPin, ShieldCheck, Ticket, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, ChevronRight, CircleAlert, Clock3, MapPin, Ticket, X } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { AgeConfirmationModal } from "../components/common/AgeConfirmationModal";
-import { Input } from "../components/common/Input";
 import { SeatControls, SeatMap } from "../components/common/SeatMap";
 import { Spinner } from "../components/common/Spinner";
 import { auditoriumToday } from "../lib/auditoriumDate";
@@ -25,15 +24,12 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
   const [seats, setSeats] = useState<Seat[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<BookingCategory | null>(null);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const toastTimerRef = useRef<number | null>(null);
+  const checkoutStarting = useRef(false);
 
   useEffect(() => {
     if (!availability) return;
@@ -83,44 +79,31 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
   };
 
-  const beginCheckout = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!show || !settings || !selectedCategory || selectedIds.length === 0) return;
-    if (!phone.trim()) {
-      setError("Please enter a phone number.");
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setError("Please enter a valid email address.");
-      return;
-    }
+  const beginCheckout = async () => {
+    if (checkoutStarting.current || !show || !settings || !selectedCategory || selectedIds.length === 0) return;
+    checkoutStarting.current = true;
     setSubmitting(true);
     setError("");
     try {
       if (adminMode) {
+        const accessToken = crypto.randomUUID() + crypto.randomUUID();
         const booking = await createAdminBooking({
+          accessToken,
           showId: show.id as Id<"shows">,
-          customerName: name.trim(),
-          customerEmail: email.trim().toLowerCase(),
-          customerPhone: phone.trim(),
           seatIds: selectedIds as Id<"seats">[],
           bookingCategory: selectedCategory!,
           now: Date.now(),
         });
-        sessionStorage.setItem(`aravalli.booking.email.${booking.bookingCode}`, booking.email);
         const returnTo = "/admin/bookings/reservations";
         sessionStorage.setItem(`aravalli.booking.returnTo.${booking.bookingCode}`, returnTo);
-        navigate(`/confirmation/${booking.bookingCode}`, {
-          state: { email: booking.email, returnTo },
+        navigate(`/confirmation/${booking.bookingCode}#token=${accessToken}`, {
+          state: { returnTo },
         });
         return;
       }
 
       const checkout = await createCheckout({
         showId: show.id as Id<"shows">,
-        customerName: name.trim(),
-        customerEmail: email.trim().toLowerCase(),
-        customerPhone: phone.trim(),
         seatIds: selectedIds as Id<"seats">[],
         bookingCategory: selectedCategory!,
       });
@@ -130,9 +113,10 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
     } catch (reason) {
       setError(friendlyErrorMessage(
         reason,
-        "We couldn't start your booking. Please check your details and try again.",
+        "We couldn't start your booking. Please try again.",
       ));
     } finally {
+      checkoutStarting.current = false;
       setSubmitting(false);
     }
   };
@@ -189,7 +173,7 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
                 maxSelectable={settings.max_seats_per_booking}
               />
             </section>
-            {error && !detailsOpen && <p className="booking-inline-error" role="alert" aria-live="polite">{error}</p>}
+            {error && <p className="booking-inline-error" role="alert" aria-live="polite">{error}</p>}
           </div>
 
           <SeatControls
@@ -206,8 +190,8 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
                 <div className="booking-desktop-total">
                   <strong>₹{total.toFixed(2)}</strong>
                 </div>
-                <button type="button" disabled={!selectedSeats.length || !selectedCategory} onClick={() => { setError(""); setDetailsOpen(true); }}>
-                  Continue <ChevronRight />
+                <button type="button" disabled={submitting || !selectedSeats.length || !selectedCategory} onClick={() => void beginCheckout()}>
+                  {submitting ? (adminMode ? "Confirming booking..." : "Holding seats...") : (adminMode ? "Confirm booking" : "Continue to payment")} <ChevronRight />
                 </button>
               </div>
             )}
@@ -220,8 +204,8 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
             <span>{selectedSeats.length ? selectedSeats.map((seat) => seat.seat_number).join(", ") : "Choose your seats"}</span>
           </div>
           <div className="booking-total"><strong>₹{total.toFixed(2)}</strong></div>
-          <button type="button" disabled={!selectedSeats.length || !selectedCategory} onClick={() => { setError(""); setDetailsOpen(true); }}>
-            Continue <ChevronRight />
+          <button type="button" disabled={submitting || !selectedSeats.length || !selectedCategory} onClick={() => void beginCheckout()}>
+            {submitting ? (adminMode ? "Confirming booking..." : "Holding seats...") : (adminMode ? "Confirm booking" : "Continue to payment")} <ChevronRight />
           </button>
         </footer>
       </main>
@@ -254,21 +238,6 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
         </div>
       )}
 
-      {detailsOpen && (
-        <div className="booking-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailsOpen(false); }}>
-          <form className="booking-details-modal" onSubmit={beginCheckout}>
-            <div className="booking-modal-header"><div><span>{adminMode ? "Final step" : "Step 3 of 4"}</span><h2>Your details</h2></div><button type="button" onClick={() => setDetailsOpen(false)} aria-label="Close"><X /></button></div>
-            <Input label="Full name" required value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" />
-            <Input label="Email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
-            <Input label="Phone number" type="tel" required value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" />
-            <div className="booking-modal-summary"><span>{selectedSeats.map((seat) => seat.seat_number).join(", ")} · {selectedCategory} · {adminMode ? "No online payment required" : "Includes payment fee"}</span><strong>₹{total.toFixed(2)}</strong></div>
-            {error && <p className="booking-inline-error" role="alert" aria-live="polite">{error}</p>}
-            <button className="booking-checkout-button" type="submit" disabled={submitting || !name.trim() || !email.trim()}>
-              <ShieldCheck /> {submitting ? (adminMode ? "Confirming booking..." : "Holding seats...") : (adminMode ? "Confirm booking" : "Continue to payment")}
-            </button>
-          </form>
-        </div>
-      )}
     </div>
   );
 }

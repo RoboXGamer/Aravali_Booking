@@ -57,9 +57,6 @@ export default defineSchema({
 
   checkoutSessions: defineTable({
     showId: v.id("shows"),
-    customerName: v.string(),
-    customerEmail: v.string(),
-    customerPhone: nullableString,
     subtotal: v.number(),
     paymentFee: v.number(),
     totalAmount: v.number(),
@@ -75,7 +72,7 @@ export default defineSchema({
     ),
     expiresAt: v.number(),
     razorpayOrderId: v.optional(v.string()),
-    accessToken: v.optional(v.string()),
+    accessTokenHash: v.optional(v.string()),
     capturePaymentId: v.optional(v.string()),
     nextReconcileAt: v.optional(v.number()),
     reconcileUntil: v.optional(v.number()),
@@ -137,11 +134,9 @@ export default defineSchema({
 
   bookings: defineTable({
     bookingCode: v.string(),
+    accessTokenHash: v.string(),
     showId: v.id("shows"),
     checkoutSessionId: v.id("checkoutSessions"),
-    customerName: v.string(),
-    customerEmail: v.string(),
-    customerPhone: nullableString,
     subtotal: v.number(),
     paymentFee: v.number(),
     totalAmount: v.number(),

@@ -18,14 +18,12 @@ import { adminBackend } from "../services/admin";
 interface CheckInResult {
   status: "success";
   booking_code: string;
-  customer_name: string;
   checked_in_at: string;
 }
 
 interface CheckedInBooking {
   id: string;
   booking_code: string;
-  customer_name: string;
   is_checked_in: boolean;
   checked_in_at: string | null;
   shows: {
@@ -283,7 +281,7 @@ export function AdminCheckIn() {
                   {result && (
                     <div className="mt-4 flex w-full items-center gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3 text-left">
                       <CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-400" />
-                      <div><p className="text-sm font-bold text-emerald-300">Entry approved</p><p className="text-xs text-slate-400">{result.customer_name} · {result.booking_code}</p></div>
+                      <div><p className="text-sm font-bold text-emerald-300">Entry approved</p><p className="text-xs text-slate-400">{result.booking_code}</p></div>
                     </div>
                   )}
                 </div>
@@ -313,7 +311,7 @@ export function AdminCheckIn() {
                       <div className="min-w-0">
                         <p className="truncate font-mono text-sm font-semibold text-slate-100">{booking.booking_code}</p>
                         <p className="mt-1 truncate text-xs text-slate-400">{booking.shows?.movies?.title || "Movie screening"}</p>
-                        <p className="mt-1 text-xs text-slate-500">{booking.booking_seats.map((seat) => seat.seat_number).join(", ") || booking.customer_name}</p>
+                        <p className="mt-1 text-xs text-slate-500">{booking.booking_seats.map((seat) => seat.seat_number).join(", ")}</p>
                       </div>
                       <div className="shrink-0 text-right">
                         <time className="text-xs text-slate-500">{formatCheckInTime(booking.checked_in_at!)}</time>

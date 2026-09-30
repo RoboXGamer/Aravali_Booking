@@ -7,12 +7,10 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { action } from "./_generated/server";
 
-const args = { bookingCode: v.string(), email: v.string() };
+const args = { bookingCode: v.string(), accessToken: v.string() };
 
 interface TicketData {
   bookingCode: string;
-  customerName: string;
-  customerEmail: string;
   totalAmount: number;
   movieTitle: string;
   posterUrl: string | null;

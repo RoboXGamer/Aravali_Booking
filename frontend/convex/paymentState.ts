@@ -1,3 +1,4 @@
+import { hashAccessToken } from "./ticketAccess";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -21,13 +22,13 @@ export interface CheckoutStatus {
   bookingCode: string | null;
   needsAttention: boolean;
   paymentStatus: string | null;
-  customerEmail: string;
   orderId: string | null;
 }
 export type PaymentDecision = { operation: "none" | "capture" | "refund"; refundKey?: string; refundAmount?: number };
 
-function assertAccess(session: Doc<"checkoutSessions"> | null, accessToken: string): asserts session is Doc<"checkoutSessions"> {
-  if (!session?.accessToken || session.accessToken !== accessToken) throw new Error("Checkout link is invalid.");
+async function assertAccess(session: Doc<"checkoutSessions"> | null, accessToken: string): Promise<Doc<"checkoutSessions">> {
+  if (!session?.accessTokenHash || session.accessTokenHash !== await hashAccessToken(accessToken)) throw new Error("Checkout link is invalid.");
+  return session;
 }
 
 async function requireWorker(ctx: MutationCtx, sessionId: Id<"checkoutSessions">, token: string) {
@@ -75,10 +76,11 @@ export const read = internalQuery({
 export const status = query({
   args: { sessionId: v.string(), accessToken: v.string() },
   handler: async (ctx, args): Promise<CheckoutStatus | null> => {
+    if (!/^[a-f0-9-]{72}$/.test(args.accessToken)) return null;
     const sessionId = ctx.db.normalizeId("checkoutSessions", args.sessionId);
     if (!sessionId) return null;
     const session = await ctx.db.get("checkoutSessions", sessionId);
-    if (!session?.accessToken || session.accessToken !== args.accessToken) return null;
+    if (!session?.accessTokenHash || session.accessTokenHash !== await hashAccessToken(args.accessToken)) return null;
     const booking = await ctx.db.query("bookings")
       .withIndex("by_checkoutSessionId", q => q.eq("checkoutSessionId", sessionId)).unique();
     const attempts = await ctx.db.query("paymentAttempts")
@@ -88,7 +90,6 @@ export const status = query({
       bookingCode: booking?.status === "confirmed" && session.status === "paid" ? booking.bookingCode : null,
       needsAttention: session.needsAttention ?? false,
       paymentStatus: attempts[0]?.providerStatus ?? null,
-      customerEmail: session.customerEmail,
       orderId: session.razorpayOrderId ?? null,
     };
   },
@@ -97,8 +98,7 @@ export const status = query({
 export const refresh = mutation({
   args: credentials,
   handler: async (ctx, args) => {
-    const session = await ctx.db.get("checkoutSessions", args.sessionId);
-    assertAccess(session, args.accessToken);
+    const session = await assertAccess(await ctx.db.get("checkoutSessions", args.sessionId), args.accessToken);
     if (!session.razorpayOrderId || Date.now() - (session.lastRefreshAt ?? 0) < 15_000) return null;
     await ctx.db.patch("checkoutSessions", session._id, { lastRefreshAt: Date.now(), nextReconcileAt: Date.now() });
     await ctx.scheduler.runAfter(0, internal.payments.reconcile, { sessionId: session._id });
@@ -217,8 +217,8 @@ export const observe = internalMutation({
     if (eligible && p.status === "captured") {
       const bookingCode = `ARA${new Date(now).getUTCFullYear()}${session._id.toUpperCase()}`;
       const bookingId = await ctx.db.insert("bookings", {
+        accessTokenHash: session.accessTokenHash!,
         bookingCode, showId: session.showId, checkoutSessionId: session._id,
-        customerName: session.customerName, customerEmail: session.customerEmail, customerPhone: session.customerPhone,
         subtotal: session.subtotal, paymentFee: session.paymentFee, totalAmount: session.totalAmount,
         status: "confirmed", isCheckedIn: false, checkedInAt: null, createdAt: now,
       });

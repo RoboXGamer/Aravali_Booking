@@ -131,9 +131,6 @@ export const getSection = query({
     type BookingOutput = {
       id: Id<"bookings">;
       booking_code: string;
-      customer_name: string;
-      customer_email: string;
-      customer_phone: string | null;
       total_amount: number;
       status: Doc<"bookings">["status"];
       can_restore: boolean;
@@ -204,9 +201,6 @@ export const getSection = query({
         result.bookings.push({
           id: booking._id,
           booking_code: booking.bookingCode,
-          customer_name: booking.customerName,
-          customer_email: booking.customerEmail,
-          customer_phone: booking.customerPhone,
           total_amount: booking.totalAmount,
           status: booking.status,
           can_restore: booking.status === "cancelled" && !!checkout && !checkout.razorpayOrderId,
@@ -679,7 +673,6 @@ export const checkIn = mutation({
       return {
         status: "cancelled" as const,
         booking_code: booking.bookingCode,
-        customer_name: booking.customerName,
       };
     }
     const show = await ctx.db.get("shows", booking.showId);
@@ -687,14 +680,12 @@ export const checkIn = mutation({
       return {
         status: "show_ended" as const,
         booking_code: booking.bookingCode,
-        customer_name: booking.customerName,
       };
     }
     if (show.date > today) {
       return {
         status: "show_not_started" as const,
         booking_code: booking.bookingCode,
-        customer_name: booking.customerName,
       };
     }
     const checkout = await ctx.db.get("checkoutSessions", booking.checkoutSessionId);
@@ -702,14 +693,12 @@ export const checkIn = mutation({
       return {
         status: "payment_unconfirmed" as const,
         booking_code: booking.bookingCode,
-        customer_name: booking.customerName,
       };
     }
     if (booking.isCheckedIn) {
       return {
         status: "already_checked_in" as const,
         booking_code: booking.bookingCode,
-        customer_name: booking.customerName,
         checked_in_at: booking.checkedInAt
           ? new Date(booking.checkedInAt).toISOString()
           : null,
@@ -719,7 +708,6 @@ export const checkIn = mutation({
     return {
       status: "success" as const,
       booking_code: booking.bookingCode,
-      customer_name: booking.customerName,
       checked_in_at: new Date(now).toISOString(),
     };
   },

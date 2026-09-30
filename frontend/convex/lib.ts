@@ -67,12 +67,6 @@ export async function moviePosterUrl(ctx: DatabaseCtx, movie: Doc<"movies">) {
     : null;
 }
 
-export function normalizeEmail(value: string) {
-  const email = value.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid email address.");
-  return email;
-}
-
 export function publicId(value: string) {
   return value;
 }

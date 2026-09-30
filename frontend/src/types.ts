@@ -55,9 +55,6 @@ export interface BookingSettings {
 export interface CheckoutSession {
   id: string;
   show_id: string;
-  customer_name: string;
-  customer_email: string;
-  customer_phone: string | null;
   subtotal: string | number;
   payment_fee: string | number;
   total_amount: string | number;
@@ -88,9 +85,6 @@ export interface BookingSeat {
 export interface Booking {
   id: string;
   booking_code: string;
-  customer_name: string;
-  customer_email: string;
-  customer_phone: string | null;
   subtotal: string | number;
   payment_fee: string | number;
   total_amount: string | number;

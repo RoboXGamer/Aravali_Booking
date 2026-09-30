@@ -1,10 +1,11 @@
+import { hashAccessToken } from "./ticketAccess";
 import { v } from "convex/values";
 import { seatConflict, releaseSeatHolds } from "./seatAvailability";
 import { internal } from "./_generated/api";
 
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
-import { auditoriumDate, ensureSettings, getSettings, moviePosterUrl, normalizeEmail, requireAdmin, roundMoney } from "./lib";
+import { auditoriumDate, ensureSettings, getSettings, moviePosterUrl, requireAdmin, roundMoney } from "./lib";
 
 const bookingCategory = v.union(
   v.literal("Gold"),
@@ -24,18 +25,12 @@ const ticketCategories = [
 
 const checkoutArgs = {
   showId: v.id("shows"),
-  customerName: v.string(),
-  customerEmail: v.string(),
-  customerPhone: v.string(),
   seatIds: v.array(v.id("seats")),
   bookingCategory,
 };
 
 interface BookingRequest {
   showId: Id<"shows">;
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
   seatIds: Id<"seats">[];
   bookingCategory: BookingCategory;
 }
@@ -59,11 +54,6 @@ async function validateBookingRequest(
     throw new Error(`You can select up to ${maximumSeats} seats.`);
   }
 
-  const customerName = args.customerName.trim();
-  if (customerName.length < 2) throw new Error("Enter the customer's full name.");
-  const customerEmail = normalizeEmail(args.customerEmail);
-  const customerPhone = args.customerPhone.trim();
-  if (!customerPhone) throw new Error("Enter a phone number.");
   const selectedSeats: Doc<"seats">[] = [];
   const selectedTicketCategory = ticketCategories.find((category) => category.id === args.bookingCategory);
   if (!selectedTicketCategory) throw new Error("Select a valid ticket category.");
@@ -83,9 +73,6 @@ async function validateBookingRequest(
 
   return {
     show,
-    customerName,
-    customerEmail,
-    customerPhone,
     selectedSeats,
     selectedTicketCategory,
   };
@@ -181,7 +168,7 @@ export const prepareCheckout = internalMutation({
   args: { ...checkoutArgs, now: v.number(), accessToken: v.string() },
   handler: async (ctx, args) => {
     const settings = await ensureSettings(ctx);
-    const { customerName, customerEmail, customerPhone, selectedSeats, selectedTicketCategory } =
+    const { selectedSeats, selectedTicketCategory } =
       await validateBookingRequest(ctx, args, args.now, settings.maxSeatsPerBooking);
 
     const subtotal = roundMoney(selectedSeats.length * selectedTicketCategory.price);
@@ -193,15 +180,12 @@ export const prepareCheckout = internalMutation({
     }
     const sessionId = await ctx.db.insert("checkoutSessions", {
       showId: args.showId,
-      customerName,
-      customerEmail,
-      customerPhone,
       subtotal,
       paymentFee,
       totalAmount: total,
       status: "pending",
       expiresAt,
-      accessToken: args.accessToken,
+      accessTokenHash: await hashAccessToken(args.accessToken),
       reconciliationVersion: 1,
     });
     for (const seat of selectedSeats) {
@@ -221,9 +205,6 @@ export const prepareCheckout = internalMutation({
     return {
       sessionId,
       showId: args.showId,
-      customerName,
-      customerEmail,
-      customerPhone,
       subtotal,
       paymentFee,
       totalAmount: total,
@@ -248,24 +229,23 @@ export const prepareCheckout = internalMutation({
 export const createAdminBooking = mutation({
   args: {
     ...checkoutArgs,
+    accessToken: v.string(),
     now: v.number(),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     const now = Date.now();
     const settings = await ensureSettings(ctx);
-    const { show, customerName, customerEmail, customerPhone, selectedSeats, selectedTicketCategory } =
+    const { show, selectedSeats, selectedTicketCategory } =
       await validateBookingRequest(ctx, args, now, settings.maxSeatsPerBooking);
     const subtotal = roundMoney(selectedSeats.length * selectedTicketCategory.price);
 
     const checkoutSessionId = await ctx.db.insert("checkoutSessions", {
       showId: args.showId,
-      customerName,
-      customerEmail,
-      customerPhone,
       subtotal,
       paymentFee: 0,
       totalAmount: subtotal,
+      accessTokenHash: await hashAccessToken(args.accessToken),
       status: "paid",
       expiresAt: now,
       reconciliationVersion: 1,
@@ -273,11 +253,9 @@ export const createAdminBooking = mutation({
     const bookingCode = `ARA${new Date(now).getUTCFullYear()}${checkoutSessionId.toUpperCase()}`;
     const bookingId = await ctx.db.insert("bookings", {
       bookingCode,
+      accessTokenHash: await hashAccessToken(args.accessToken),
       showId: args.showId,
       checkoutSessionId,
-      customerName,
-      customerEmail,
-      customerPhone,
       subtotal,
       paymentFee: 0,
       totalAmount: subtotal,
@@ -303,7 +281,6 @@ export const createAdminBooking = mutation({
 
     return {
       bookingCode,
-      email: customerEmail,
     };
   },
 });
@@ -350,13 +327,14 @@ export const releaseCheckout = internalMutation({
 });
 
 export const getByCode = query({
-  args: { bookingCode: v.string(), email: v.string() },
+  args: { bookingCode: v.string(), accessToken: v.string() },
   handler: async (ctx, args) => {
+    if (!/^[a-f0-9-]{72}$/.test(args.accessToken)) return null;
     const booking = await ctx.db
       .query("bookings")
       .withIndex("by_bookingCode", (q) => q.eq("bookingCode", args.bookingCode.trim().toUpperCase()))
       .unique();
-    if (!booking || booking.customerEmail !== args.email.trim().toLowerCase()) return null;
+    if (!booking || booking.status !== "confirmed" || booking.accessTokenHash !== await hashAccessToken(args.accessToken)) return null;
     const show = await ctx.db.get("shows", booking.showId);
     const movie = show ? await ctx.db.get("movies", show.movieId) : null;
     if (!show || !movie) return null;
@@ -367,9 +345,6 @@ export const getByCode = query({
     return {
       id: booking._id,
       booking_code: booking.bookingCode,
-      customer_name: booking.customerName,
-      customer_email: booking.customerEmail,
-      customer_phone: booking.customerPhone,
       subtotal: booking.subtotal,
       payment_fee: booking.paymentFee,
       total_amount: booking.totalAmount,
@@ -392,13 +367,14 @@ export const getByCode = query({
 });
 
 export const getTicketData = internalQuery({
-  args: { bookingCode: v.string(), email: v.string() },
+  args: { bookingCode: v.string(), accessToken: v.string() },
   handler: async (ctx, args) => {
+    if (!/^[a-f0-9-]{72}$/.test(args.accessToken)) return null;
     const booking = await ctx.db
       .query("bookings")
       .withIndex("by_bookingCode", (q) => q.eq("bookingCode", args.bookingCode.trim().toUpperCase()))
       .unique();
-    if (!booking || booking.customerEmail !== args.email.trim().toLowerCase() || booking.status !== "confirmed") return null;
+    if (!booking || booking.accessTokenHash !== await hashAccessToken(args.accessToken) || booking.status !== "confirmed") return null;
     const show = await ctx.db.get("shows", booking.showId);
     const movie = show ? await ctx.db.get("movies", show.movieId) : null;
     if (!show || !movie) return null;
@@ -406,8 +382,6 @@ export const getTicketData = internalQuery({
       .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id)).take(100);
     return {
       bookingCode: booking.bookingCode,
-      customerName: booking.customerName,
-      customerEmail: booking.customerEmail,
       totalAmount: booking.totalAmount,
       movieTitle: movie.title,
       posterUrl: await moviePosterUrl(ctx, movie),

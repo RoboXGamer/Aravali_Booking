@@ -11,9 +11,6 @@ import { env } from "./_generated/server";
 interface PreparedCheckout {
   sessionId: Id<"checkoutSessions">;
   showId: Id<"shows">;
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
   subtotal: number;
   paymentFee: number;
   totalAmount: number;
@@ -37,9 +34,6 @@ interface CheckoutResult {
   checkout_session: {
     id: Id<"checkoutSessions">;
     show_id: Id<"shows">;
-    customer_name: string;
-    customer_email: string;
-    customer_phone: string;
     subtotal: number;
     payment_fee: number;
     total_amount: number;
@@ -54,9 +48,6 @@ interface CheckoutResult {
 export const createCheckout = action({
   args: {
     showId: v.id("shows"),
-    customerName: v.string(),
-    customerEmail: v.string(),
-    customerPhone: v.string(),
     seatIds: v.array(v.id("seats")),
     bookingCategory: v.union(
       v.literal("Gold"),
@@ -90,9 +81,6 @@ export const createCheckout = action({
         checkout_session: {
           id: prepared.sessionId,
           show_id: prepared.showId,
-          customer_name: prepared.customerName,
-          customer_email: prepared.customerEmail,
-          customer_phone: prepared.customerPhone,
           subtotal: prepared.subtotal,
           payment_fee: prepared.paymentFee,
           total_amount: prepared.totalAmount,

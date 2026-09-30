@@ -69,11 +69,10 @@ export function Checkout() {
   }, [sessionId, accessToken, refreshPayment]);
 
   useEffect(() => {
-    if (!paymentState?.bookingCode) return;
+    if (!paymentState?.bookingCode || !accessToken) return;
     sessionStorage.removeItem("aravalli.checkout");
-    sessionStorage.setItem(`aravalli.booking.email.${paymentState.bookingCode}`, paymentState.customerEmail);
-    navigate(`/confirmation/${paymentState.bookingCode}`, { replace: true, state: { email: paymentState.customerEmail } });
-  }, [paymentState, navigate]);
+    navigate(`/confirmation/${paymentState.bookingCode}#token=${accessToken}`, { replace: true });
+  }, [paymentState, accessToken, navigate]);
 
   const statusMessage = paymentState === null
     ? "This payment status link is invalid. Please contact the auditorium."
@@ -133,11 +132,6 @@ export function Checkout() {
         order_id: order.id,
         timeout: getSecondsRemaining(checkout),
         retry: { enabled: false },
-        prefill: {
-          name: session.customer_name,
-          email: session.customer_email,
-          contact: session.customer_phone || "",
-        },
         theme: { color: "#8B5CF6" },
         modal: { ondismiss: () => {
           opening.current = false;
@@ -227,8 +221,8 @@ export function Checkout() {
           </div>
 
           <div className="mt-4 border-t border-[rgb(var(--booking-border)/0.13)] pt-3">
-            <p className="text-xs font-semibold text-slate-500">Booking email</p>
-            <p className="mt-1 break-all text-sm text-slate-100">{session.customer_email}</p>
+            <p className="text-xs font-semibold text-slate-500">Ticket access</p>
+            <p className="mt-1 break-all text-sm text-slate-100">Save your ticket or private link after payment</p>
           </div>
         </section>
 

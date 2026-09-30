@@ -1,17 +1,15 @@
 import { ArrowLeft, Download, Search } from "lucide-react";
 import { useAction, useQuery } from "convex/react";
-import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { api } from "../../convex/_generated/api";
 
 import { Button } from "../components/common/Button";
-import { Input } from "../components/common/Input";
 import { Spinner } from "../components/common/Spinner";
 import type { Booking } from "../types";
 import "../confirmation.css";
 
 interface ConfirmationState {
-  booking?: Booking;
-  email?: string;
   returnTo?: string;
 }
 
@@ -64,83 +62,66 @@ export function Confirmation() {
   const location = useLocation();
   const navigate = useNavigate();
   const routeState = (location.state || {}) as ConfirmationState;
-  const storedEmail = booking_code ? sessionStorage.getItem(`aravalli.booking.email.${booking_code}`) : null;
   const storedReturnTo = booking_code ? sessionStorage.getItem(`aravalli.booking.returnTo.${booking_code}`) : null;
-  const [submittedEmail, setSubmittedEmail] = useState("");
-  const [lookupEmail, setLookupEmail] = useState(() => routeState.email || storedEmail || "");
   const requestedReturnTo = routeState.returnTo || storedReturnTo;
   const returnTo = requestedReturnTo === "/admin/bookings/reservations"
     ? requestedReturnTo
     : "/";
-  const email = submittedEmail || routeState.email || storedEmail || "";
+  const accessToken = new URLSearchParams(location.hash.slice(1)).get("token") || "";
+  const [copied, setCopied] = useState(false);
   const fetchedBooking = useQuery(
     api.bookings.getByCode,
-    !routeState.booking && booking_code && email ? { bookingCode: booking_code, email } : "skip",
+    booking_code && accessToken ? { bookingCode: booking_code, accessToken } : "skip",
   );
   const getQr = useAction(api.tickets.getQrDataUrl);
   const getPdf = useAction(api.tickets.getPdfBase64);
   const getTicketImage = useAction(api.tickets.getTicketImageSvg);
-  const booking = routeState.booking || (fetchedBooking as Booking | null | undefined) || null;
+  const booking = (fetchedBooking as Booking | null | undefined) || null;
   const [qrUrl, setQrUrl] = useState("");
   const [error, setError] = useState("");
   const automaticDownload = useRef("");
 
-  const submitBookingLookup = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError("");
-    setSubmittedEmail(lookupEmail.trim().toLowerCase());
-  };
 
   useEffect(() => {
-    if (!booking || !booking_code || !email) return;
+    if (!booking || !booking_code || !accessToken) return;
     let active = true;
-    getQr({ bookingCode: booking_code, email })
+    getQr({ bookingCode: booking_code, accessToken })
       .then((url) => { if (active) setQrUrl(url); })
       .catch((reason: Error) => { if (active) setError(reason.message); });
     return () => { active = false; };
-  }, [booking?.id, booking_code, email, getQr]);
+  }, [booking?.id, booking_code, accessToken, getQr]);
 
   const downloadTicketFiles = useCallback(async () => {
-    if (!booking_code || !email) return;
+    if (!booking_code || !accessToken) return;
     setError("");
     const [pdfBase64, ticketSvg] = await Promise.all([
-      getPdf({ bookingCode: booking_code, email }),
-      getTicketImage({ bookingCode: booking_code, email }),
+      getPdf({ bookingCode: booking_code, accessToken }),
+      getTicketImage({ bookingCode: booking_code, accessToken }),
     ]);
     downloadBase64(pdfBase64, "application/pdf", `Aravalli-${booking_code}.pdf`);
     const jpgUrl = await svgToJpegUrl(ticketSvg);
     triggerDownload(jpgUrl, `Aravalli-${booking_code}.jpg`);
     window.setTimeout(() => URL.revokeObjectURL(jpgUrl), 1_000);
-  }, [booking_code, email, getPdf, getTicketImage]);
+  }, [booking_code, accessToken, getPdf, getTicketImage]);
 
   useEffect(() => {
-    if (!booking || !booking_code || !email) return;
-    const downloadKey = `${booking_code}:${email}`;
+    if (!booking || !booking_code || !accessToken) return;
+    const downloadKey = `${booking_code}:${accessToken}`;
     if (automaticDownload.current === downloadKey) return;
     automaticDownload.current = downloadKey;
     void downloadTicketFiles().catch((reason: Error) => setError(reason.message));
-  }, [booking?.id, booking_code, downloadTicketFiles, email]);
+  }, [booking?.id, booking_code, downloadTicketFiles, accessToken]);
 
-  if (!routeState.booking && email && fetchedBooking === undefined) return <div className="ticket-loading"><Spinner size="lg" /></div>;
-  if (!booking || !booking_code || !email) {
+  if (accessToken && fetchedBooking === undefined) return <div className="ticket-loading"><Spinner size="lg" /></div>;
+  if (!booking || !booking_code || !accessToken) {
     return (
       <div className="mx-auto max-w-lg px-5 py-24 text-center">
         <Search className="mx-auto h-8 w-8 text-[rgb(var(--booking-accent-text))]" />
         <h1 className="mt-4 text-2xl font-black text-white">Retrieve your booking</h1>
-        <p className="mt-2 text-slate-400">{error || (email && fetchedBooking === null
-          ? "We couldn't find a confirmed ticket with those details. Check the booking code and email, then try again."
-          : "Enter the email address used for this booking to reopen your ticket.")}</p>
-        {booking_code && <form onSubmit={submitBookingLookup} className="mt-6 space-y-4 text-left">
-          <Input
-            label="Booking email"
-            type="email"
-            required
-            autoComplete="email"
-            value={lookupEmail}
-            onChange={(event) => setLookupEmail(event.target.value)}
-          />
-          <Button className="w-full" type="submit" disabled={!lookupEmail.trim()}>Find my ticket</Button>
-        </form>}
+        <p className="mt-2 text-slate-400">{error || (accessToken && fetchedBooking === null
+          ? "We couldn't find a confirmed ticket with those details. Open the complete private link saved after booking."
+          : "Open your saved private ticket link. If you lost your ticket and link, contact auditorium staff with your payment receipt.")}</p>
+
         <Link to={returnTo}><Button className="mt-6">{returnTo.startsWith("/admin") ? "Return to reservations" : "Return home"}</Button></Link>
       </div>
     );
@@ -178,7 +159,17 @@ export function Confirmation() {
           </button>
         </header>
 
-        <p className="ticket-email-status">Booking confirmed for {booking.customer_email}</p>
+        <p className="ticket-email-status">Booking confirmed. Save your ticket and private link. Anyone with the link can access your ticket.</p>
+        <div className="mb-4 flex flex-wrap justify-center gap-3">
+          <Button variant="secondary" onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(`${window.location.origin}/confirmation/${booking_code}#token=${accessToken}`);
+              setCopied(true);
+            } catch { setError("Unable to copy. Save the complete address from your browser instead."); }
+          }}>{copied ? "Private link copied" : "Copy private ticket link"}</Button>
+          <Button onClick={download}>Download ticket</Button>
+        </div>
+        {error && <p className="mb-4 text-center text-rose-300" role="alert">{error}</p>}
 
         <article className="ticket-card">
           <section className="ticket-details-section">
@@ -223,4 +214,3 @@ export function Confirmation() {
     </div>
   );
 }
-import { api } from "../../convex/_generated/api";
