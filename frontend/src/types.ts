@@ -48,7 +48,6 @@ export interface AvailabilityResponse {
 export interface BookingSettings {
   max_seats_per_booking: number;
   seat_hold_minutes: number;
-  razorpay_fee_percentage: string | number;
   ticket_categories: TicketCategory[];
 }
 
@@ -56,7 +55,6 @@ export interface CheckoutSession {
   id: string;
   show_id: string;
   subtotal: string | number;
-  payment_fee: string | number;
   total_amount: string | number;
   expires_at: string;
   razorpay_order_id: string;
@@ -86,7 +84,6 @@ export interface Booking {
   id: string;
   booking_code: string;
   subtotal: string | number;
-  payment_fee: string | number;
   total_amount: string | number;
   status: "confirmed" | "cancelled";
   created_at: string;

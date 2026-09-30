@@ -104,11 +104,9 @@ export const adminBackend = {
     update: (input: {
       max_seats_per_booking: number;
       seat_hold_minutes: number;
-      razorpay_fee_percentage: number;
     }) => convex.mutation(api.admin.updateSettings, {
       maxSeatsPerBooking: input.max_seats_per_booking,
       seatHoldMinutes: input.seat_hold_minutes,
-      razorpayFeePercentage: input.razorpay_fee_percentage,
     }),
   },
   admins: {

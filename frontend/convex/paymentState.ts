@@ -219,7 +219,7 @@ export const observe = internalMutation({
       const bookingId = await ctx.db.insert("bookings", {
         accessTokenHash: session.accessTokenHash!,
         bookingCode, showId: session.showId, checkoutSessionId: session._id,
-        subtotal: session.subtotal, paymentFee: session.paymentFee, totalAmount: session.totalAmount,
+        subtotal: session.subtotal, totalAmount: session.totalAmount,
         status: "confirmed", isCheckedIn: false, checkedInAt: null, createdAt: now,
       });
       for (const item of items) await ctx.db.insert("bookingSeats", {

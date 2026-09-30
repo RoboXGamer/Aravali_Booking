@@ -48,9 +48,9 @@ it after the old delivery/replay window has been accounted for.
   timeout. Captured funds are refunded. Do not promise an immediate bank credit.
 - The original seat selection is retained in `checkoutItems` after live locks are
   removed. Booking, reservation, restoration, and finalisation share seat checks.
-- Cancelling an online booking queues a **full refund**, including the amount
-  charged as the payment fee. Such a cancelled booking cannot be restored; create
-  a new booking. Manual bookings have no Razorpay refund.
+- Cancelling an online booking queues a **full refund** of the ticket amount.
+  Such a cancelled booking cannot be restored; create a new booking. Manual
+  bookings have no Razorpay refund.
 - Shows with checkout history cannot be deleted. Disable them to retain the
   records needed for reconciliation. Disabling a show prevents new fulfilment;
   cancelling previously confirmed tickets remains an explicit admin action.

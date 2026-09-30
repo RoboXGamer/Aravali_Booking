@@ -12,7 +12,6 @@ interface PreparedCheckout {
   sessionId: Id<"checkoutSessions">;
   showId: Id<"shows">;
   subtotal: number;
-  paymentFee: number;
   totalAmount: number;
   expiresAt: number;
   selectedSeats: Array<{
@@ -35,7 +34,6 @@ interface CheckoutResult {
     id: Id<"checkoutSessions">;
     show_id: Id<"shows">;
     subtotal: number;
-    payment_fee: number;
     total_amount: number;
     expires_at: string;
     access_token: string;
@@ -82,7 +80,6 @@ export const createCheckout = action({
           id: prepared.sessionId,
           show_id: prepared.showId,
           subtotal: prepared.subtotal,
-          payment_fee: prepared.paymentFee,
           total_amount: prepared.totalAmount,
           expires_at: new Date(prepared.expiresAt).toISOString(),
           access_token: accessToken,

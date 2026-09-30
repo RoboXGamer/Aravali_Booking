@@ -85,12 +85,10 @@ export const getBookingSettings = query({
     const source = settings ?? {
       maxSeatsPerBooking: 6,
       seatHoldMinutes: 10,
-      razorpayFeePercentage: 2,
     };
     return {
       max_seats_per_booking: source.maxSeatsPerBooking,
       seat_hold_minutes: source.seatHoldMinutes,
-      razorpay_fee_percentage: source.razorpayFeePercentage,
       ticket_categories: ticketCategories.map((category) => ({
         id: category.id,
         seat_category: category.seatCategory,
@@ -172,8 +170,7 @@ export const prepareCheckout = internalMutation({
       await validateBookingRequest(ctx, args, args.now, settings.maxSeatsPerBooking);
 
     const subtotal = roundMoney(selectedSeats.length * selectedTicketCategory.price);
-    const paymentFee = roundMoney(subtotal * settings.razorpayFeePercentage / 100);
-    const total = roundMoney(subtotal + paymentFee);
+    const total = subtotal;
     const expiresAt = args.now + settings.seatHoldMinutes * 60_000;
     if (!Number.isSafeInteger(Math.round(total * 100)) || total <= 0 || !Number.isFinite(expiresAt) || expiresAt <= args.now) {
       throw new Error("Booking settings are invalid. Please contact the auditorium.");
@@ -181,7 +178,6 @@ export const prepareCheckout = internalMutation({
     const sessionId = await ctx.db.insert("checkoutSessions", {
       showId: args.showId,
       subtotal,
-      paymentFee,
       totalAmount: total,
       status: "pending",
       expiresAt,
@@ -206,7 +202,6 @@ export const prepareCheckout = internalMutation({
       sessionId,
       showId: args.showId,
       subtotal,
-      paymentFee,
       totalAmount: total,
       expiresAt,
       selectedSeats: selectedSeats.map((seat) => ({
@@ -243,7 +238,6 @@ export const createAdminBooking = mutation({
     const checkoutSessionId = await ctx.db.insert("checkoutSessions", {
       showId: args.showId,
       subtotal,
-      paymentFee: 0,
       totalAmount: subtotal,
       accessTokenHash: await hashAccessToken(args.accessToken),
       status: "paid",
@@ -257,7 +251,6 @@ export const createAdminBooking = mutation({
       showId: args.showId,
       checkoutSessionId,
       subtotal,
-      paymentFee: 0,
       totalAmount: subtotal,
       status: "confirmed",
       isCheckedIn: false,
@@ -346,7 +339,6 @@ export const getByCode = query({
       id: booking._id,
       booking_code: booking.bookingCode,
       subtotal: booking.subtotal,
-      payment_fee: booking.paymentFee,
       total_amount: booking.totalAmount,
       status: booking.status,
       created_at: new Date(booking.createdAt).toISOString(),

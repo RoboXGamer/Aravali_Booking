@@ -10,7 +10,6 @@ export interface AppSettings {
   id: string | number;
   max_seats_per_booking: number | string;
   seat_hold_minutes: number | string;
-  razorpay_fee_percentage: number | string;
 }
 
 export interface AdminAccess {
@@ -31,7 +30,6 @@ interface Props {
 const emptyForm = {
   max_seats_per_booking: "6",
   seat_hold_minutes: "10",
-  razorpay_fee_percentage: "2",
 };
 
 export function ApplicationSettings({ view = "all", settings, adminUsers, saving, perform }: Props) {
@@ -44,7 +42,6 @@ export function ApplicationSettings({ view = "all", settings, adminUsers, saving
     setForm({
       max_seats_per_booking: String(settings.max_seats_per_booking),
       seat_hold_minutes: String(settings.seat_hold_minutes),
-      razorpay_fee_percentage: String(settings.razorpay_fee_percentage),
     });
   }, [settings]);
 
@@ -53,7 +50,6 @@ export function ApplicationSettings({ view = "all", settings, adminUsers, saving
     void perform(() => adminBackend.settings.update({
       max_seats_per_booking: Number(form.max_seats_per_booking),
       seat_hold_minutes: Number(form.seat_hold_minutes),
-      razorpay_fee_percentage: Number(form.razorpay_fee_percentage),
     }));
   };
 
@@ -71,7 +67,6 @@ export function ApplicationSettings({ view = "all", settings, adminUsers, saving
         <form className="mt-6 grid gap-5 sm:grid-cols-2" onSubmit={save}>
           <Input label="Maximum seats per booking" type="number" min="1" max="20" required value={form.max_seats_per_booking} onChange={(event) => setForm({ ...form, max_seats_per_booking: event.target.value })} />
           <Input label="Seat hold duration (minutes)" type="number" min="1" max="30" required value={form.seat_hold_minutes} onChange={(event) => setForm({ ...form, seat_hold_minutes: event.target.value })} />
-          <Input label="Razorpay fee percentage" type="number" min="0" max="100" step="0.01" required value={form.razorpay_fee_percentage} onChange={(event) => setForm({ ...form, razorpay_fee_percentage: event.target.value })} />
           <div className="flex items-end">
             <Button type="submit" disabled={saving || !settings} className="w-full">Save settings</Button>
           </div>

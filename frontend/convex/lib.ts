@@ -40,7 +40,6 @@ export async function ensureSettings(ctx: MutationCtx) {
     key: "booking",
     maxSeatsPerBooking: 6,
     seatHoldMinutes: 10,
-    razorpayFeePercentage: 2,
   });
   const created = await ctx.db.get("appSettings", id);
   if (!created) throw new Error("Unable to initialize application settings.");

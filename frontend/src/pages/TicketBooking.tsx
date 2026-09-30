@@ -54,8 +54,7 @@ export function TicketBooking({ adminMode = false }: { adminMode?: boolean }) {
   const selectedSeats = useMemo(() => seats.filter((seat) => selectedIds.includes(seat.id)), [seats, selectedIds]);
   const selectedTicketCategory = settings?.ticket_categories.find((category) => category.id === selectedCategory) ?? null;
   const subtotal = selectedSeats.length * (selectedTicketCategory?.price ?? 0);
-  const paymentFee = !adminMode && settings ? Math.round((subtotal * Number(settings.razorpay_fee_percentage) / 100) * 100) / 100 : 0;
-  const total = subtotal + paymentFee;
+  const total = subtotal;
 
   const toggleSeat = (seatId: string) => {
     setError("");

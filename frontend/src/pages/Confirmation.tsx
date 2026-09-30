@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, Search } from "lucide-react";
+import { ArrowLeft, Share2, Search } from "lucide-react";
 import { useAction, useQuery } from "convex/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -29,7 +29,7 @@ function downloadBase64(base64: string, mimeType: string, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
-async function svgToJpegUrl(svgDataUrl: string) {
+async function svgToJpegBlob(svgDataUrl: string) {
   const image = new Image();
   image.src = svgDataUrl;
   await new Promise<void>((resolve, reject) => {
@@ -46,13 +46,13 @@ async function svgToJpegUrl(svgDataUrl: string) {
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-  return await new Promise<string>((resolve, reject) => {
+  return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (!blob) {
         reject(new Error("Unable to create the ticket JPG."));
         return;
       }
-      resolve(URL.createObjectURL(blob));
+      resolve(blob);
     }, "image/jpeg", 0.94);
   });
 }
@@ -68,7 +68,6 @@ export function Confirmation() {
     ? requestedReturnTo
     : "/";
   const accessToken = new URLSearchParams(location.hash.slice(1)).get("token") || "";
-  const [copied, setCopied] = useState(false);
   const fetchedBooking = useQuery(
     api.bookings.getByCode,
     booking_code && accessToken ? { bookingCode: booking_code, accessToken } : "skip",
@@ -80,6 +79,36 @@ export function Confirmation() {
   const [qrUrl, setQrUrl] = useState("");
   const [error, setError] = useState("");
   const automaticDownload = useRef("");
+  const ticketImageCache = useRef<{ key: string; promise: Promise<File> } | null>(null);
+  const [shareImage, setShareImage] = useState<{ key: string; file: File } | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [shareNotice, setShareNotice] = useState("");
+  const ticketKey = `${booking_code}:${accessToken}`;
+
+  const prepareTicketImage = useCallback(() => {
+    const key = `${booking_code}:${accessToken}`;
+    if (ticketImageCache.current?.key === key) return ticketImageCache.current.promise;
+    const promise = getTicketImage({ bookingCode: booking_code!, accessToken })
+      .then(svgToJpegBlob)
+      .then(blob => new File([blob], `Aravalli-${booking_code}.jpg`, { type: "image/jpeg" }));
+    ticketImageCache.current = { key, promise };
+    void promise.catch(() => {
+      if (ticketImageCache.current?.promise === promise) ticketImageCache.current = null;
+    });
+    return promise;
+  }, [booking_code, accessToken, getTicketImage]);
+
+  // Prepare before the click so native sharing retains the user gesture.
+  useEffect(() => {
+    if (!booking || !booking_code || !accessToken) return;
+    let active = true;
+    prepareTicketImage().then(file => {
+      if (active) setShareImage({ key: ticketKey, file });
+    }).catch(() => {
+      if (active) setError("Unable to prepare the ticket image. Reload this page to try again.");
+    });
+    return () => { active = false; };
+  }, [booking?.id, booking_code, accessToken, ticketKey, prepareTicketImage]);
 
 
   useEffect(() => {
@@ -94,15 +123,15 @@ export function Confirmation() {
   const downloadTicketFiles = useCallback(async () => {
     if (!booking_code || !accessToken) return;
     setError("");
-    const [pdfBase64, ticketSvg] = await Promise.all([
+    const [pdfBase64, ticketImage] = await Promise.all([
       getPdf({ bookingCode: booking_code, accessToken }),
-      getTicketImage({ bookingCode: booking_code, accessToken }),
+      prepareTicketImage(),
     ]);
     downloadBase64(pdfBase64, "application/pdf", `Aravalli-${booking_code}.pdf`);
-    const jpgUrl = await svgToJpegUrl(ticketSvg);
+    const jpgUrl = URL.createObjectURL(ticketImage);
     triggerDownload(jpgUrl, `Aravalli-${booking_code}.jpg`);
     window.setTimeout(() => URL.revokeObjectURL(jpgUrl), 1_000);
-  }, [booking_code, accessToken, getPdf, getTicketImage]);
+  }, [booking_code, accessToken, getPdf, prepareTicketImage]);
 
   useEffect(() => {
     if (!booking || !booking_code || !accessToken) return;
@@ -141,6 +170,38 @@ export function Confirmation() {
     }
   };
 
+  const share = async () => {
+    if (sharing || shareImage?.key !== ticketKey) return;
+    setSharing(true);
+    setError("");
+    setShareNotice("");
+    const url = `${window.location.origin}/confirmation/${booking_code}#token=${accessToken}`;
+    const data = { title: `${movieTitle} — Aravalli ticket`, text: "Your Aravalli Auditorium ticket", url };
+    try {
+      if (navigator.share && navigator.canShare?.({ ...data, files: [shareImage.file] })) {
+        await navigator.share({ ...data, files: [shareImage.file] });
+      } else if (navigator.share) {
+        await navigator.share(data);
+        const imageUrl = URL.createObjectURL(shareImage.file);
+        triggerDownload(imageUrl, shareImage.file.name);
+        window.setTimeout(() => URL.revokeObjectURL(imageUrl), 1_000);
+        setShareNotice("Link shared. Ticket image downloaded so you can attach it separately.");
+      } else {
+        const imageUrl = URL.createObjectURL(shareImage.file);
+        triggerDownload(imageUrl, shareImage.file.name);
+        window.setTimeout(() => URL.revokeObjectURL(imageUrl), 1_000);
+        await navigator.clipboard.writeText(url);
+        setShareNotice("Sharing is unavailable in this browser. Link copied and ticket image downloaded.");
+      }
+    } catch (reason) {
+      if (!(reason instanceof DOMException && reason.name === "AbortError")) {
+        setError("Unable to share this ticket. Download it and share the complete browser address instead.");
+      }
+    } finally {
+      setSharing(false);
+    }
+  };
+
   return (
     <div className="ticket-page">
       <div className="ticket-shell">
@@ -154,21 +215,15 @@ export function Confirmation() {
             <ArrowLeft />
           </button>
           <h1>Your Ticket</h1>
-          <button type="button" onClick={download} aria-label="Download ticket" className="ticket-header-button ticket-download-button">
-            <Download />
+          <button type="button" onClick={() => void share()} disabled={sharing || shareImage?.key !== ticketKey} aria-label="Share ticket" title={shareImage?.key === ticketKey ? "Share ticket image and private link" : "Preparing ticket image"} className="ticket-header-button ticket-download-button">
+            <Share2 />
           </button>
         </header>
 
-        <p className="ticket-email-status">Booking confirmed. Save your ticket and private link. Anyone with the link can access your ticket.</p>
         <div className="mb-4 flex flex-wrap justify-center gap-3">
-          <Button variant="secondary" onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(`${window.location.origin}/confirmation/${booking_code}#token=${accessToken}`);
-              setCopied(true);
-            } catch { setError("Unable to copy. Save the complete address from your browser instead."); }
-          }}>{copied ? "Private link copied" : "Copy private ticket link"}</Button>
           <Button onClick={download}>Download ticket</Button>
         </div>
+        {shareNotice && <p className="mb-4 text-center text-sm text-slate-400" role="status">{shareNotice}</p>}
         {error && <p className="mb-4 text-center text-rose-300" role="alert">{error}</p>}
 
         <article className="ticket-card">

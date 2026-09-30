@@ -158,7 +158,6 @@ export const getSection = query({
         id: Id<"appSettings">;
         max_seats_per_booking: number;
         seat_hold_minutes: number;
-        razorpay_fee_percentage: number;
       } | null,
       adminUsers: [] as Array<{ id: Id<"adminUsers">; email: string; isAdmin: boolean; role: "operations" | "super_admin" }>,
     };
@@ -249,7 +248,6 @@ export const getSection = query({
         id: settings._id,
         max_seats_per_booking: settings.maxSeatsPerBooking,
         seat_hold_minutes: settings.seatHoldMinutes,
-        razorpay_fee_percentage: settings.razorpayFeePercentage,
       } : null;
       result.adminUsers = admins.map((admin) => ({
         id: admin._id,
@@ -541,13 +539,11 @@ export const updateSettings = mutation({
   args: {
     maxSeatsPerBooking: v.number(),
     seatHoldMinutes: v.number(),
-    razorpayFeePercentage: v.number(),
   },
   handler: async (ctx, args) => {
     await requireSuperAdmin(ctx);
     if (!Number.isInteger(args.maxSeatsPerBooking) || args.maxSeatsPerBooking < 1 || args.maxSeatsPerBooking > 20) throw new Error("Booking limit must be a whole number between 1 and 20.");
     if (!Number.isFinite(args.seatHoldMinutes) || args.seatHoldMinutes < 1 || args.seatHoldMinutes > 30) throw new Error("Seat hold must be between 1 and 30 minutes.");
-    if (!Number.isFinite(args.razorpayFeePercentage) || args.razorpayFeePercentage < 0 || args.razorpayFeePercentage > 100) throw new Error("Payment fee must be between 0 and 100 percent.");
     const current = await ensureSettings(ctx);
     await ctx.db.patch("appSettings", current._id, args);
     return null;

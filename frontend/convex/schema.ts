@@ -58,7 +58,6 @@ export default defineSchema({
   checkoutSessions: defineTable({
     showId: v.id("shows"),
     subtotal: v.number(),
-    paymentFee: v.number(),
     totalAmount: v.number(),
     status: v.union(
       v.literal("pending"),
@@ -138,7 +137,6 @@ export default defineSchema({
     showId: v.id("shows"),
     checkoutSessionId: v.id("checkoutSessions"),
     subtotal: v.number(),
-    paymentFee: v.number(),
     totalAmount: v.number(),
     status: v.union(v.literal("confirmed"), v.literal("cancelled")),
     isCheckedIn: v.boolean(),
@@ -176,7 +174,6 @@ export default defineSchema({
     key: v.string(),
     maxSeatsPerBooking: v.number(),
     seatHoldMinutes: v.number(),
-    razorpayFeePercentage: v.number(),
   }).index("by_key", ["key"]),
 
   polls: defineTable({
